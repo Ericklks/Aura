@@ -4,6 +4,7 @@ import io
 import json
 import os
 import random
+import secrets
 import re
 import shutil
 import sys
@@ -517,18 +518,23 @@ class NewTicketPanelView(discord.ui.View):
     def __init__(self, panel):
         super().__init__(timeout=None)
 
-        self.panel_id = str(panel.get("id"))
+        self.panel_id = str(
+            panel.get("id")
+        )
+
+        topics = panel.get(
+            "topics",
+            []
+        )
 
         if panel.get("ticket_type") == "topics":
-            topics = panel.get("topics", [])
-
             for topic in topics[:25]:
-    self.add_item(
-        NewTicketTopicButton(
-            self.panel_id,
-            topic
-        )
-    )
+                self.add_item(
+                    NewTicketTopicButton(
+                        self.panel_id,
+                        topic
+                    )
+                )
 
         else:
             self.add_item(
@@ -536,203 +542,6 @@ class NewTicketPanelView(discord.ui.View):
                     self.panel_id
                 )
             )
-
-async def send_new_ticket_panel(
-    channel,
-    panel
-):
-    if not channel:
-        return None
-
-    embed = build_ticket_panel_embed(
-        panel
-    )
-
-    view = NewTicketPanelView(
-        panel
-    )
-
-    message = await channel.send(
-        embed=embed,
-        view=view
-    )
-
-    data = ticket_data()
-
-    panel_id = str(
-        panel.get("id")
-    )
-
-    if panel_id in data["panels"]:
-        data["panels"][panel_id]["channel_id"] = channel.id
-        data["panels"][panel_id]["message_id"] = message.id
-
-        save_ticket_data(data)
-
-    return message
-
-async def update_new_ticket_panel_message(
-    guild,
-    panel
-):
-    if not guild:
-        return False
-
-    channel = ticket_get_channel(
-        guild,
-        panel.get("channel_id")
-    )
-
-    if not channel:
-        return False
-
-    message_id = panel.get(
-        "message_id"
-    )
-
-    if not message_id:
-        return False
-
-    try:
-        message = await channel.fetch_message(
-            int(message_id)
-        )
-
-    except (
-        discord.NotFound,
-        discord.Forbidden,
-        discord.HTTPException
-    ):
-        return False
-
-    embed = build_ticket_panel_embed(
-        panel
-    )
-
-    view = NewTicketPanelView(
-        panel
-    )
-
-    try:
-        await message.edit(
-            embed=embed,
-            view=view
-        )
-
-        return True
-
-    except (
-        discord.Forbidden,
-        discord.HTTPException
-    ):
-        return False
-
-async def create_new_ticket(
-    interaction: discord.Interaction,
-    panel: dict,
-    topic: dict | None = None
-):
-    guild = interaction.guild
-    user = interaction.user
-
-    if not guild:
-        return None
-
-    category_id = (
-        topic.get("category_id")
-        if topic
-        else panel.get("category_id")
-    )
-
-    staff_role_id = (
-        topic.get("staff_role_id")
-        if topic
-        else panel.get("staff_role_id")
-    )
-
-    category = ticket_get_channel(
-        guild,
-        category_id
-    )
-
-    staff_role = None
-
-    if staff_role_id:
-        try:
-            staff_role = guild.get_role(
-                int(staff_role_id)
-            )
-        except (TypeError, ValueError):
-            staff_role = None
-
-    topic_name = (
-        topic.get("name")
-        if topic
-        else panel.get("name", "ticket")
-    )
-
-    channel_name = (
-        f"ticket-{ticket_safe_name(user.display_name)}"
-    )
-
-    if topic:
-        channel_name = (
-            f"{ticket_safe_name(topic_name)}-"
-            f"{ticket_safe_name(user.display_name)}"
-        )
-
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(
-            view_channel=False
-        ),
-        user: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            attach_files=True,
-            embed_links=True
-        ),
-    }
-
-    if staff_role:
-        overwrites[staff_role] = discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            manage_messages=True
-        )
-
-    channel = await guild.create_text_channel(
-        name=channel_name[:100],
-        category=category if isinstance(
-            category,
-            discord.CategoryChannel
-        ) else None,
-        overwrites=overwrites,
-        reason=f"Ticket aberto por {user}"
-    )
-
-    data = ticket_data()
-
-    ticket_id = secrets.token_hex(8)
-
-    data["tickets"][ticket_id] = {
-        "id": ticket_id,
-        "guild_id": guild.id,
-        "channel_id": channel.id,
-        "user_id": user.id,
-        "panel_id": panel.get("id"),
-        "topic_id": topic.get("id") if topic else None,
-        "topic_name": topic_name,
-        "closed": False,
-        "created_at": datetime.now(
-            timezone.utc
-        ).isoformat()
-    }
-
-    save_ticket_data(data)
-
-    return channel
 
 async def restore_ticket_panel_views():
     data = ticket_data()
@@ -753,7 +562,6 @@ async def restore_ticket_panel_views():
                 f"[TICKET] Erro ao restaurar painel "
                 f"{panel.get('id')}: {error}"
             )
-
 class NewTicketControlView(discord.ui.View):
     def __init__(self, ticket_id):
         super().__init__(timeout=None)
@@ -860,7 +668,7 @@ class NewTicketControlView(discord.ui.View):
         style=discord.ButtonStyle.danger,
         custom_id="new_ticket:close"
     )
-        async def close_ticket(
+    async def close_ticket(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
@@ -6831,7 +6639,6 @@ class NewTicketPanelModal(discord.ui.Modal):
         panel["ticket_type"] = self.ticket_type
 
         category_id = self.category_input.value.strip()
-        staff_role_id = self.staff_role_input.value.strip()
         channel_id = self.channel_input.value.strip()
         log_channel_id = self.log_channel_input.value.strip()
 
@@ -6856,50 +6663,50 @@ class NewTicketPanelModal(discord.ui.Modal):
         save_new_ticket_panel(panel)
 
         if self.ticket_type == "topics":
-    await interaction.response.send_message(
-        "📚 **Painel criado!**\n\n"
-        "Agora configure os tópicos deste painel.",
-        view=NewTicketTopicsView(
-            panel["id"]
-        ),
-        ephemeral=True
-    )
+            await interaction.response.send_message(
+                "📚 **Painel criado!**\n\n"
+                "Agora configure os tópicos deste painel.",
+                view=NewTicketTopicsView(
+                    panel["id"]
+                ),
+                ephemeral=True
+            )
         else:
-    channel = ticket_get_channel(
-        interaction.guild,
-        panel.get("channel_id")
-    )
+            channel = ticket_get_channel(
+                interaction.guild,
+                panel.get("channel_id")
+            )
 
-    if not channel:
-        return await interaction.response.send_message(
-            "⚠️ O painel foi salvo, mas o canal configurado "
-            "não foi encontrado.",
-            ephemeral=True
-        )
+        if not channel:
+            return await interaction.response.send_message(
+                "⚠️ O painel foi salvo, mas o canal configurado "
+                "não foi encontrado.",
+                ephemeral=True
+            )
 
-    try:
-        await send_new_ticket_panel(
-            channel,
-            panel
-        )
+        try:
+            await send_new_ticket_panel(
+                channel,
+                panel
+            )
 
-        await interaction.response.send_message(
-            f"✅ **Painel criado e publicado!**\n\n"
-            f"📍 Canal: {channel.mention}",
-            ephemeral=True
-        )
+            await interaction.response.send_message(
+                f"✅ **Painel criado e publicado!**\n\n"
+                f"📍 Canal: {channel.mention}",
+                ephemeral=True
+            )
 
-    except discord.Forbidden:
-        await interaction.response.send_message(
-            "❌ Não tenho permissão para enviar mensagens "
-            "nesse canal.",
-            ephemeral=True
-        )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ Não tenho permissão para enviar mensagens "
+                "nesse canal.",
+                ephemeral=True
+            )
 
-    except Exception as error:
-        print(
-            f"[TICKET] Erro ao publicar painel: {error}"
-        )
+        except Exception as error:
+            print(
+                f"[TICKET] Erro ao publicar painel: {error}"
+            )
 
         await interaction.response.send_message(
             "⚠️ O painel foi salvo, mas ocorreu um erro "
@@ -7352,7 +7159,7 @@ class NewTicketPanelEditView(discord.ui.View):
             )
         )
 
-        @discord.ui.button(
+    @discord.ui.button(
         label="Cor do painel",
         emoji="🎨",
         style=discord.ButtonStyle.secondary,
@@ -7972,8 +7779,7 @@ class PainelPrincipalView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="Tickets", emoji="🎫", style=discord.ButtonStyle.success, row=0)
-        @discord.ui.button(
+    @discord.ui.button(
         label="Tickets",
         emoji="🎫",
         style=discord.ButtonStyle.success,
