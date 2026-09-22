@@ -16,6 +16,1364 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 DATA_FILE = Path("ticket_panels.json")
+# ============================================================
+# SISTEMA DE TICKETS — NOVO FORMATO
+# ============================================================
+
+TICKET_DATA_FILE = Path("ticket_panels.json")
+def ticket_data():
+    if not TICKET_DATA_FILE.exists():
+        return {
+            "panels": {},
+            "tickets": {}
+        }
+
+    try:
+        data = json.loads(
+            TICKET_DATA_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+
+        data.setdefault("panels", {})
+        data.setdefault("tickets", {})
+
+        return data
+
+    except (OSError, json.JSONDecodeError):
+        return {
+            "panels": {},
+            "tickets": {}
+        }
+
+
+def save_ticket_data(data):
+    TICKET_DATA_FILE.write_text(
+        json.dumps(
+            data,
+            indent=2,
+            ensure_ascii=False
+        ),
+        encoding="utf-8"
+    )
+
+def ticket_get_panel(panel_id):
+    data = ticket_data()
+
+    panel_id = str(panel_id)
+
+    panel = data.get("panels", {}).get(
+        panel_id
+    )
+
+    if not panel:
+        return None
+
+    # Garante compatibilidade com painéis
+    # criados antes dessa versão.
+    panel.setdefault(
+        "id",
+        panel_id
+    )
+
+    panel.setdefault(
+        "topics",
+        []
+    )
+
+    panel.setdefault(
+        "ticket_type",
+        "single"
+    )
+
+    panel.setdefault(
+        "max_tickets_per_user",
+        1
+    )
+
+    return panel
+
+def save_new_ticket_panel(panel):
+    data = ticket_data()
+
+    panel_id = str(
+        panel.get("id")
+    )
+
+    if not panel_id:
+        panel_id = secrets.token_hex(8)
+        panel["id"] = panel_id
+
+    data["panels"][panel_id] = panel
+
+    save_ticket_data(data)
+
+    return panel
+
+def ticket_get_open_user_tickets(guild_id, user_id):
+    data = ticket_data()
+
+    result = []
+
+    for ticket in data["tickets"].values():
+        if (
+            str(ticket.get("guild_id")) == str(guild_id)
+            and str(ticket.get("user_id")) == str(user_id)
+            and not ticket.get("closed", False)
+        ):
+            result.append(ticket)
+
+    return result
+
+
+def ticket_get_channel(guild, channel_id):
+    if not channel_id:
+        return None
+
+    try:
+        return guild.get_channel(int(channel_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def ticket_safe_name(name):
+    name = re.sub(
+        r"[^a-zA-Z0-9\-]",
+        "-",
+        name.lower()
+    )
+
+    name = re.sub(
+        r"-+",
+        "-",
+        name
+    )
+
+    return name[:70].strip("-") or "usuario"
+
+def create_ticket_panel_data():
+    return {
+    "id": secrets.token_hex(8),
+
+    "name": "Suporte",
+        "description": "Abra um ticket para entrar em contato com nossa equipe.",
+
+        "channel_id": None,
+        "category_id": None,
+        "staff_role_id": None,
+        "log_channel_id": None,
+
+        # single = um único botão para abrir ticket
+        # topics = vários tópicos de atendimento
+        "ticket_type": "single",
+
+        "color": "5865F2",
+        "button_text": "Abrir ticket",
+        "button_emoji": "🎫",
+
+        "image_url": None,
+        "thumbnail_url": None,
+
+        "max_tickets_per_user": 1,
+
+        # Tópicos do painel
+        "topics": [],
+
+        "created_at": datetime.now(
+            timezone.utc
+        ).isoformat()
+    }
+
+def create_ticket_topic(
+    name,
+    description,
+    emoji="🎫",
+    category_id=None,
+    staff_role_id=None,
+    color="5865F2",
+):
+    return {
+        "id": secrets.token_hex(4),
+        "name": name,
+        "description": description,
+        "emoji": emoji,
+        "category_id": category_id,
+        "staff_role_id": staff_role_id,
+        "color": color.replace("#", "")[:6],
+    }
+
+def build_ticket_panel_embed(panel):
+    color_value = panel.get("color", "5865F2")
+
+    try:
+        embed_color = discord.Color(int(color_value, 16))
+    except (ValueError, TypeError):
+        embed_color = discord.Color.blurple()
+
+    embed = discord.Embed(
+        title=f"🎫 {panel.get('name', 'Suporte')}",
+        description=panel.get(
+            "description",
+            "Abra um ticket para entrar em contato com nossa equipe."
+        ),
+        color=embed_color
+    )
+
+    image_url = panel.get("image_url")
+    thumbnail_url = panel.get("thumbnail_url")
+
+    if image_url:
+        embed.set_image(url=image_url)
+
+    if thumbnail_url:
+        embed.set_thumbnail(url=thumbnail_url)
+
+    if panel.get("ticket_type") == "topics":
+        topics = panel.get("topics", [])
+
+        if topics:
+            texto = "\n".join(
+                f"{topic.get('emoji', '🎫')} **{topic.get('name', 'Ticket')}**"
+                + (
+                    f" — {topic.get('description')}"
+                    if topic.get("description")
+                    else ""
+                )
+                for topic in topics
+            )
+
+            embed.add_field(
+                name="📚 Tópicos disponíveis",
+                value=texto[:1024],
+                inline=False
+            )
+
+    embed.set_footer(
+        text="Selecione uma opção abaixo para abrir seu ticket."
+    )
+
+    return embed
+
+class NewTicketOpenButton(discord.ui.Button):
+    def __init__(self, panel_id):
+        self.panel_id = str(panel_id)
+
+        super().__init__(
+            label="Abrir ticket",
+            emoji="🎫",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"new_ticket_open:{self.panel_id}"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        panel = ticket_get_panel(self.panel_id)
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel de tickets não existe mais.",
+                ephemeral=True
+            )
+
+        if panel.get("ticket_type") == "topics":
+            return await interaction.response.send_message(
+                "📚 Este painel possui vários tópicos. "
+                "Selecione um dos tópicos disponíveis.",
+                ephemeral=True
+            )
+
+        guild = interaction.guild
+
+        if not guild:
+            return await interaction.response.send_message(
+                "❌ Este botão só pode ser usado dentro de um servidor.",
+                ephemeral=True
+            )
+
+        user_tickets = ticket_get_open_user_tickets(
+            guild.id,
+            interaction.user.id
+        )
+
+        max_tickets = int(
+            panel.get("max_tickets_per_user", 1)
+        )
+
+        if len(user_tickets) >= max_tickets:
+            return await interaction.response.send_message(
+                f"❌ Você já possui o limite de "
+                f"**{max_tickets} ticket(s)** aberto(s).",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+            channel = await create_new_ticket(
+                interaction,
+                panel
+            )
+
+            if not channel:
+                return await interaction.followup.send(
+                    "❌ Não foi possível criar o ticket.",
+                    ephemeral=True
+                )
+
+            data = ticket_data()
+
+            ticket = None
+
+            for item in data["tickets"].values():
+                if item.get("channel_id") == channel.id:
+                    ticket = item
+                    break
+
+            if not ticket:
+                return await interaction.followup.send(
+                    "⚠️ O canal foi criado, mas os dados do ticket "
+                    "não foram encontrados.",
+                    ephemeral=True
+                )
+
+            embed = build_new_ticket_embed(
+                ticket,
+                panel=panel
+            )
+
+            await channel.send(
+                content=interaction.user.mention,
+                embed=embed,
+                view=NewTicketControlView(
+                    ticket["id"]
+                )
+            )
+
+            await interaction.followup.send(
+                f"✅ Seu ticket foi criado: {channel.mention}",
+                ephemeral=True
+            )
+
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ Não tenho permissão para criar canais "
+                "ou configurar as permissões do ticket.",
+                ephemeral=True
+            )
+
+        except Exception as error:
+            print(
+                f"[TICKET] Erro ao criar ticket: {error}"
+            )
+
+            await interaction.followup.send(
+                "❌ Ocorreu um erro ao criar seu ticket.",
+                ephemeral=True
+            )
+
+class NewTicketTopicButton(discord.ui.Button):
+    def __init__(self, panel_id, topic):
+        self.panel_id = str(panel_id)
+        self.topic_id = str(topic.get("id"))
+
+        super().__init__(
+            label=topic.get("name", "Ticket")[:80],
+            emoji=topic.get("emoji", "🎫"),
+            style=discord.ButtonStyle.primary,
+            custom_id=(
+                f"new_ticket_topic:"
+                f"{self.panel_id}:"
+                f"{self.topic_id}"
+            )
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topics = panel.get("topics", [])
+
+        topic = next(
+            (
+                item for item in topics
+                if str(item.get("id")) == self.topic_id
+            ),
+            None
+        )
+
+        if not topic:
+            return await interaction.response.send_message(
+                "❌ Este tópico não existe mais.",
+                ephemeral=True
+            )
+
+        guild = interaction.guild
+
+        if not guild:
+            return await interaction.response.send_message(
+                "❌ Este botão só pode ser usado dentro de um servidor.",
+                ephemeral=True
+            )
+
+        user_tickets = ticket_get_open_user_tickets(
+            guild.id,
+            interaction.user.id
+        )
+
+        max_tickets = int(
+            panel.get("max_tickets_per_user", 1)
+        )
+
+        if len(user_tickets) >= max_tickets:
+            return await interaction.response.send_message(
+                f"❌ Você já possui o limite de "
+                f"**{max_tickets} ticket(s)** aberto(s).",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+            channel = await create_new_ticket(
+                interaction,
+                panel,
+                topic
+            )
+
+            if not channel:
+                return await interaction.followup.send(
+                    "❌ Não foi possível criar o ticket.",
+                    ephemeral=True
+                )
+
+            data = ticket_data()
+
+            ticket = next(
+                (
+                    item
+                    for item in data["tickets"].values()
+                    if item.get("channel_id") == channel.id
+                ),
+                None
+            )
+
+            if not ticket:
+                return await interaction.followup.send(
+                    "⚠️ O canal foi criado, mas os dados "
+                    "do ticket não foram encontrados.",
+                    ephemeral=True
+                )
+
+            embed = build_new_ticket_embed(
+                ticket,
+                panel=panel,
+                topic=topic
+            )
+
+            await channel.send(
+                content=interaction.user.mention,
+                embed=embed,
+                view=NewTicketControlView(
+                    ticket["id"]
+                )
+            )
+
+            await interaction.followup.send(
+                f"✅ Seu ticket foi criado: {channel.mention}",
+                ephemeral=True
+            )
+
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ Não tenho permissão para criar o canal "
+                "ou configurar as permissões.",
+                ephemeral=True
+            )
+
+        except Exception as error:
+            print(
+                f"[TICKET] Erro ao criar ticket por tópico: {error}"
+            )
+
+            await interaction.followup.send(
+                "❌ Ocorreu um erro ao criar seu ticket.",
+                ephemeral=True
+            )
+
+class NewTicketPanelView(discord.ui.View):
+    def __init__(self, panel):
+        super().__init__(timeout=None)
+
+        self.panel_id = str(panel.get("id"))
+
+        if panel.get("ticket_type") == "topics":
+            topics = panel.get("topics", [])
+
+            for topic in topics[:25]:
+    self.add_item(
+        NewTicketTopicButton(
+            self.panel_id,
+            topic
+        )
+    )
+
+        else:
+            self.add_item(
+                NewTicketOpenButton(
+                    self.panel_id
+                )
+            )
+
+async def send_new_ticket_panel(
+    channel,
+    panel
+):
+    if not channel:
+        return None
+
+    embed = build_ticket_panel_embed(
+        panel
+    )
+
+    view = NewTicketPanelView(
+        panel
+    )
+
+    message = await channel.send(
+        embed=embed,
+        view=view
+    )
+
+    data = ticket_data()
+
+    panel_id = str(
+        panel.get("id")
+    )
+
+    if panel_id in data["panels"]:
+        data["panels"][panel_id]["channel_id"] = channel.id
+        data["panels"][panel_id]["message_id"] = message.id
+
+        save_ticket_data(data)
+
+    return message
+
+async def update_new_ticket_panel_message(
+    guild,
+    panel
+):
+    if not guild:
+        return False
+
+    channel = ticket_get_channel(
+        guild,
+        panel.get("channel_id")
+    )
+
+    if not channel:
+        return False
+
+    message_id = panel.get(
+        "message_id"
+    )
+
+    if not message_id:
+        return False
+
+    try:
+        message = await channel.fetch_message(
+            int(message_id)
+        )
+
+    except (
+        discord.NotFound,
+        discord.Forbidden,
+        discord.HTTPException
+    ):
+        return False
+
+    embed = build_ticket_panel_embed(
+        panel
+    )
+
+    view = NewTicketPanelView(
+        panel
+    )
+
+    try:
+        await message.edit(
+            embed=embed,
+            view=view
+        )
+
+        return True
+
+    except (
+        discord.Forbidden,
+        discord.HTTPException
+    ):
+        return False
+
+async def create_new_ticket(
+    interaction: discord.Interaction,
+    panel: dict,
+    topic: dict | None = None
+):
+    guild = interaction.guild
+    user = interaction.user
+
+    if not guild:
+        return None
+
+    category_id = (
+        topic.get("category_id")
+        if topic
+        else panel.get("category_id")
+    )
+
+    staff_role_id = (
+        topic.get("staff_role_id")
+        if topic
+        else panel.get("staff_role_id")
+    )
+
+    category = ticket_get_channel(
+        guild,
+        category_id
+    )
+
+    staff_role = None
+
+    if staff_role_id:
+        try:
+            staff_role = guild.get_role(
+                int(staff_role_id)
+            )
+        except (TypeError, ValueError):
+            staff_role = None
+
+    topic_name = (
+        topic.get("name")
+        if topic
+        else panel.get("name", "ticket")
+    )
+
+    channel_name = (
+        f"ticket-{ticket_safe_name(user.display_name)}"
+    )
+
+    if topic:
+        channel_name = (
+            f"{ticket_safe_name(topic_name)}-"
+            f"{ticket_safe_name(user.display_name)}"
+        )
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=False
+        ),
+        user: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            attach_files=True,
+            embed_links=True
+        ),
+    }
+
+    if staff_role:
+        overwrites[staff_role] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_messages=True
+        )
+
+    channel = await guild.create_text_channel(
+        name=channel_name[:100],
+        category=category if isinstance(
+            category,
+            discord.CategoryChannel
+        ) else None,
+        overwrites=overwrites,
+        reason=f"Ticket aberto por {user}"
+    )
+
+    data = ticket_data()
+
+    ticket_id = secrets.token_hex(8)
+
+    data["tickets"][ticket_id] = {
+        "id": ticket_id,
+        "guild_id": guild.id,
+        "channel_id": channel.id,
+        "user_id": user.id,
+        "panel_id": panel.get("id"),
+        "topic_id": topic.get("id") if topic else None,
+        "topic_name": topic_name,
+        "closed": False,
+        "created_at": datetime.now(
+            timezone.utc
+        ).isoformat()
+    }
+
+    save_ticket_data(data)
+
+    return channel
+
+async def restore_ticket_panel_views():
+    data = ticket_data()
+
+    for panel in data.get("panels", {}).values():
+        try:
+            bot.add_view(
+                NewTicketPanelView(panel)
+            )
+
+            print(
+                f"[TICKET] View restaurada: "
+                f"{panel.get('name', 'Painel')}"
+            )
+
+        except Exception as error:
+            print(
+                f"[TICKET] Erro ao restaurar painel "
+                f"{panel.get('id')}: {error}"
+            )
+
+class NewTicketControlView(discord.ui.View):
+    def __init__(self, ticket_id):
+        super().__init__(timeout=None)
+
+        self.ticket_id = str(ticket_id)
+
+    @discord.ui.button(
+        label="Assumir",
+        emoji="🙋",
+        style=discord.ButtonStyle.primary,
+        custom_id="new_ticket:assume"
+    )
+    async def assume_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Este ticket não foi encontrado.",
+                ephemeral=True
+            )
+
+        if ticket.get("closed", False):
+            return await interaction.response.send_message(
+                "❌ Este ticket já está fechado.",
+                ephemeral=True
+            )
+
+        current_assignee = ticket.get(
+            "assignee_id"
+        )
+
+        if current_assignee:
+            if str(current_assignee) == str(
+                interaction.user.id
+            ):
+                return await interaction.response.send_message(
+                    "🙋 Você já assumiu este ticket.",
+                    ephemeral=True
+                )
+
+            return await interaction.response.send_message(
+                f"❌ Este ticket já foi assumido por "
+                f"<@{current_assignee}>.",
+                ephemeral=True
+            )
+
+        ticket["assignee_id"] = interaction.user.id
+        ticket["assignee_name"] = str(
+            interaction.user
+        )
+
+        save_ticket_data(data)
+
+        await interaction.response.send_message(
+            f"🙋 {interaction.user.mention} "
+            "assumiu este ticket."
+        )
+
+    @discord.ui.button(
+        label="Adicionar membro",
+        emoji="👤",
+        style=discord.ButtonStyle.secondary,
+        custom_id="new_ticket:add_member"
+    )
+    async def add_member(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_modal(
+            NewTicketAddMemberModal(
+                self.ticket_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Renomear",
+        emoji="📝",
+        style=discord.ButtonStyle.secondary,
+        custom_id="new_ticket:rename"
+    )
+    async def rename_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_modal(
+            NewTicketRenameModal(
+                self.ticket_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Fechar ticket",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger,
+        custom_id="new_ticket:close"
+    )
+        async def close_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Este ticket não foi encontrado.",
+                ephemeral=True
+            )
+
+        if ticket.get("closed", False):
+            return await interaction.response.send_message(
+                "❌ Este ticket já está fechado.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "⚠️ **Tem certeza que deseja fechar este ticket?**\n\n"
+            "Essa ação iniciará o processo de fechamento.",
+            view=NewTicketCloseConfirmView(
+                self.ticket_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketRenameModal(discord.ui.Modal):
+    def __init__(self, ticket_id):
+        super().__init__(
+            title="📝 Renomear ticket"
+        )
+
+        self.ticket_id = str(ticket_id)
+
+        self.name_input = discord.ui.TextInput(
+            label="Novo nome",
+            placeholder="Ex: suporte-cliente",
+            max_length=80,
+            required=True
+        )
+
+        self.add_item(
+            self.name_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Este ticket não foi encontrado.",
+                ephemeral=True
+            )
+
+        channel = interaction.channel
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+            return await interaction.response.send_message(
+                "❌ Este canal não é um ticket válido.",
+                ephemeral=True
+            )
+
+        new_name = ticket_safe_name(
+            self.name_input.value
+        )
+
+        if not new_name:
+            return await interaction.response.send_message(
+                "❌ Nome inválido.",
+                ephemeral=True
+            )
+
+        await channel.edit(
+            name=new_name,
+            reason=(
+                f"Ticket renomeado por "
+                f"{interaction.user}"
+            )
+        )
+
+        await interaction.response.send_message(
+            f"✅ Ticket renomeado para "
+            f"`{new_name}`.",
+            ephemeral=True
+        )
+
+async def generate_ticket_transcript(
+    channel: discord.TextChannel
+):
+    lines = []
+
+    lines.append(
+        f"TICKET: #{channel.name}"
+    )
+
+    lines.append(
+        f"CANAL ID: {channel.id}"
+    )
+
+    lines.append(
+        "=" * 70
+    )
+
+    async for message in channel.history(
+        limit=None,
+        oldest_first=True
+    ):
+        timestamp = message.created_at.strftime(
+            "%d/%m/%Y %H:%M:%S"
+        )
+
+        author = (
+            f"{message.author} "
+            f"({message.author.id})"
+        )
+
+        content = message.content or ""
+
+        if message.attachments:
+            attachments = " | ".join(
+                attachment.url
+                for attachment in message.attachments
+            )
+
+            content = (
+                f"{content}\n"
+                f"[Anexo] {attachments}"
+            )
+
+        if message.embeds:
+            content = (
+                f"{content}\n"
+                f"[Embed enviado]"
+            )
+
+        lines.append(
+            f"[{timestamp}] {author}: {content}"
+        )
+
+    return "\n".join(lines)
+
+async def create_ticket_transcript_file(
+    channel: discord.TextChannel
+):
+    transcript = await generate_ticket_transcript(
+        channel
+    )
+
+    return discord.File(
+        io.BytesIO(
+            transcript.encode(
+                "utf-8"
+            )
+        ),
+        filename=(
+            f"transcript-{channel.id}.txt"
+        )
+    )
+
+class NewTicketAddMemberModal(discord.ui.Modal):
+    def __init__(self, ticket_id):
+        super().__init__(
+            title="👤 Adicionar membro"
+        )
+
+        self.ticket_id = str(ticket_id)
+
+        self.user_input = discord.ui.TextInput(
+            label="ID do usuário",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=True
+        )
+
+        self.add_item(
+            self.user_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Este ticket não foi encontrado.",
+                ephemeral=True
+            )
+
+        channel = interaction.channel
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+            return await interaction.response.send_message(
+                "❌ Este canal não é um ticket válido.",
+                ephemeral=True
+            )
+
+        user_id = self.user_input.value.strip()
+
+        if not user_id.isdigit():
+            return await interaction.response.send_message(
+                "❌ O ID informado é inválido.",
+                ephemeral=True
+            )
+
+        try:
+            member = await interaction.guild.fetch_member(
+                int(user_id)
+            )
+
+        except discord.NotFound:
+            return await interaction.response.send_message(
+                "❌ Esse usuário não está neste servidor.",
+                ephemeral=True
+            )
+
+        except discord.HTTPException:
+            return await interaction.response.send_message(
+                "❌ Não consegui localizar esse usuário.",
+                ephemeral=True
+            )
+
+        await channel.set_permissions(
+            member,
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            attach_files=True,
+            embed_links=True,
+            reason=(
+                f"Membro adicionado ao ticket por "
+                f"{interaction.user}"
+            )
+        )
+
+        await interaction.response.send_message(
+            f"✅ {member.mention} foi adicionado ao ticket.",
+            ephemeral=True
+        )
+
+        await channel.send(
+            f"👤 {member.mention} foi adicionado ao ticket "
+            f"por {interaction.user.mention}."
+        )
+
+class NewTicketCloseConfirmView(discord.ui.View):
+    def __init__(self, ticket_id):
+        super().__init__(timeout=60)
+
+        self.ticket_id = str(ticket_id)
+
+    @discord.ui.button(
+        label="Fechar ticket",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm_close(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return await interaction.response.edit_message(
+                content="❌ Este ticket não foi encontrado.",
+                view=None
+            )
+
+        if ticket.get("closed", False):
+            return await interaction.response.edit_message(
+                content="❌ Este ticket já está fechado.",
+                view=None
+            )
+
+        channel = interaction.channel
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+            return await interaction.response.edit_message(
+                content="❌ Este canal não é válido para fechamento.",
+                view=None
+            )
+
+        # Gera o transcript antes de apagar o canal
+        transcript_file = await create_ticket_transcript_file(
+            channel
+        )
+
+        ticket["closed"] = True
+        ticket["closed_by"] = interaction.user.id
+        ticket["closed_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        save_ticket_data(data)
+
+        # Procura o canal de logs configurado no painel
+        panel = ticket_get_panel(
+            ticket.get("panel_id")
+        )
+
+        log_channel = None
+
+        if panel:
+            log_channel = ticket_get_channel(
+                interaction.guild,
+                panel.get("log_channel_id")
+            )
+
+        # Envia o transcript para os logs
+        # Envia o transcript para os logs
+        if log_channel:
+            try:
+                transcript_file = await create_ticket_transcript_file(
+                    channel
+                )
+
+                log_embed = discord.Embed(
+                    title="🔒 Ticket fechado",
+                    description=(
+                        "O ticket foi fechado e seu histórico "
+                        "foi salvo abaixo."
+                    ),
+                    color=discord.Color.red(),
+                    timestamp=datetime.now(
+                        timezone.utc
+                    )
+                )
+
+                log_embed.add_field(
+                    name="🎫 Ticket",
+                    value=f"`{channel.name}`",
+                    inline=True
+                )
+
+                log_embed.add_field(
+                    name="👤 Criado por",
+                    value=f"<@{ticket.get('user_id')}>",
+                    inline=True
+                )
+
+                log_embed.add_field(
+                    name="🔒 Fechado por",
+                    value=interaction.user.mention,
+                    inline=True
+                )
+
+                if ticket.get("assignee_id"):
+                    log_embed.add_field(
+                        name="🙋 Responsável",
+                        value=(
+                            f"<@{ticket.get('assignee_id')}>"
+                        ),
+                        inline=True
+                    )
+
+                await log_channel.send(
+                    embed=log_embed,
+                    file=transcript_file
+                )
+
+            except discord.Forbidden:
+                print(
+                    "[TICKET] Sem permissão para enviar "
+                    "o transcript no canal de logs."
+                )
+
+            except discord.HTTPException as error:
+                print(
+                    f"[TICKET] Discord recusou o transcript: "
+                    f"{error}"
+                )
+
+            except Exception as error:
+                print(
+                    f"[TICKET] Erro ao enviar transcript: "
+                    f"{error}"
+                )
+
+        await interaction.response.edit_message(
+            content=(
+                "🔒 **Ticket fechado com sucesso.**\n"
+                "O canal será excluído em alguns segundos."
+            ),
+            view=None
+        )
+
+        if isinstance(channel, discord.TextChannel):
+            await asyncio.sleep(5)
+
+            try:
+                await channel.delete(
+                    reason=(
+                        f"Ticket fechado por "
+                        f"{interaction.user}"
+                    )
+                )
+
+            except discord.NotFound:
+                pass
+
+            except discord.Forbidden:
+                print(
+                    "[TICKET] Sem permissão para excluir o canal."
+                )
+
+    @discord.ui.button(
+        label="Cancelar",
+        emoji="❌",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel_close(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            content="✅ Fechamento cancelado.",
+            view=None
+        )
+
+def build_new_ticket_embed(
+    ticket,
+    panel=None,
+    topic=None
+):
+    panel = panel or {}
+    topic = topic or {}
+
+    color_value = (
+        topic.get("color")
+        or panel.get("color")
+        or "5865F2"
+    )
+
+    try:
+        embed_color = discord.Color(
+            int(str(color_value).replace("#", ""), 16)
+        )
+    except (ValueError, TypeError):
+        embed_color = discord.Color.blurple()
+
+    topic_name = (
+        topic.get("name")
+        or ticket.get("topic_name")
+        or panel.get("name")
+        or "Suporte"
+    )
+
+    topic_description = (
+        topic.get("description")
+        or panel.get("description")
+        or "Nossa equipe irá atender você em breve."
+    )
+
+    embed = discord.Embed(
+        title="🎫 TICKET ABERTO",
+        description=(
+            f"Olá, <@{ticket.get('user_id')}>!\n\n"
+            f"**Assunto:** {topic_name}\n\n"
+            f"{topic_description}\n\n"
+            "Utilize os botões abaixo para gerenciar este ticket."
+        ),
+        color=embed_color
+    )
+
+    embed.add_field(
+        name="👤 Criado por",
+        value=f"<@{ticket.get('user_id')}>",
+        inline=True
+    )
+
+    embed.add_field(
+        name="📌 Tópico",
+        value=topic_name,
+        inline=True
+    )
+
+    embed.set_footer(
+        text=f"Ticket #{ticket.get('id', 'N/A')}"
+    )
+
+    return embed
 COMMAND_PREFIX = os.getenv("BOT_PREFIX", "!")
 SITE_URL = os.getenv("SITE_URL", "https://furiousbot1.netlify.app").rstrip("/")
 PAINEL_GIF_URL = "https://www.bing.com/th/id/OGC.42d13870a89f09149fad3fa40c54b19f?r=0&o=7&pid=1.7&rm=3&rurl=https%3a%2f%2fi.pinimg.com%2foriginals%2fc3%2f7c%2fd2%2fc37cd207c15f7e1a5110329668a569d0.gif&ehk=XH%2b7BxOfCVISigu85Np9fd7DGVEOsed1YxFCHyDFmrw%3d"
@@ -4634,6 +5992,1974 @@ class SecurityPanelView(discord.ui.View):
             ServerFeaturesConfigModal()
         )
 
+class NewTicketTopicsView(discord.ui.View):
+    def __init__(self, panel_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+
+    def get_panel(self):
+        return ticket_get_panel(
+            self.panel_id
+        )
+
+    @discord.ui.button(
+        label="Adicionar tópico",
+        emoji="➕",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def add_topic(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = self.get_panel()
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketTopicModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Ver tópicos",
+        emoji="📚",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    @discord.ui.button(
+        label="Ver tópicos",
+        emoji="📚",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def list_topics(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = self.get_panel()
+
+        topics = panel.get("topics", [])
+
+        if len(topics) >= 25:
+            return await interaction.response.send_message(
+                "❌ Este painel já possui **25 tópicos**, "
+                "que é o limite de botões do Discord.",
+                ephemeral=True
+            )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topics = panel.get(
+            "topics",
+            []
+        )
+
+        if not topics:
+            return await interaction.response.send_message(
+                "📭 Este painel ainda não possui tópicos.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "📚 **Selecione o tópico que deseja gerenciar:**",
+            view=NewTicketTopicManageView(
+                self.panel_id,
+                topics
+            ),
+            ephemeral=True
+        )
+
+        text = "\n".join(
+            f"{topic.get('emoji', '🎫')} "
+            f"**{topic.get('name', 'Sem nome')}**"
+            for topic in topics
+        )
+
+        await interaction.response.send_message(
+            f"📚 **Tópicos configurados**\n\n{text}",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Publicar painel",
+        emoji="📤",
+        style=discord.ButtonStyle.success,
+        row=1
+    )
+    async def publish_panel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = self.get_panel()
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        if not panel.get("topics"):
+            return await interaction.response.send_message(
+                "❌ Adicione pelo menos um tópico antes de publicar.",
+                ephemeral=True
+            )
+
+        channel = ticket_get_channel(
+            interaction.guild,
+            panel.get("channel_id")
+        )
+
+        if not channel:
+            return await interaction.response.send_message(
+                "❌ O canal configurado para este painel não foi encontrado.",
+                ephemeral=True
+            )
+
+        await send_new_ticket_panel(
+            channel,
+            panel
+        )
+
+        await interaction.response.send_message(
+            f"✅ Painel publicado em {channel.mention}.",
+            ephemeral=True
+        )
+
+class NewTicketTopicManageView(discord.ui.View):
+    def __init__(
+        self,
+        panel_id,
+        topics
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        for topic in topics[:25]:
+            self.add_item(
+                NewTicketTopicManageButton(
+                    self.panel_id,
+                    topic
+                )
+            )
+
+class NewTicketTopicManageButton(discord.ui.Button):
+    def __init__(
+        self,
+        panel_id,
+        topic
+    ):
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.topic_id = str(
+            topic.get("id")
+        )
+
+        super().__init__(
+            label=topic.get(
+                "name",
+                "Tópico"
+            )[:80],
+            emoji=topic.get(
+                "emoji",
+                "🎫"
+            ),
+            style=discord.ButtonStyle.primary,
+            custom_id=(
+                f"new_ticket_topic_manage:"
+                f"{self.panel_id}:"
+                f"{self.topic_id}"
+            )
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topic = next(
+            (
+                item
+                for item in panel.get(
+                    "topics",
+                    []
+                )
+                if str(item.get("id"))
+                == self.topic_id
+            ),
+            None
+        )
+
+        if not topic:
+            return await interaction.response.send_message(
+                "❌ Este tópico não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            f"📚 **{topic.get('name', 'Tópico')}**\n\n"
+            "Escolha uma ação:",
+            view=NewTicketTopicActionsView(
+                self.panel_id,
+                self.topic_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketTopicActionsView(discord.ui.View):
+    def __init__(
+        self,
+        panel_id,
+        topic_id
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.topic_id = str(
+            topic_id
+        )
+
+    @discord.ui.button(
+        label="Editar",
+        emoji="✏️",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def edit_topic(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topic = next(
+            (
+                item
+                for item in panel.get(
+                    "topics",
+                    []
+                )
+                if str(item.get("id"))
+                == self.topic_id
+            ),
+            None
+        )
+
+        if not topic:
+            return await interaction.response.send_message(
+                "❌ Este tópico não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketTopicEditModal(
+                self.panel_id,
+                self.topic_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Excluir",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger,
+        row=0
+    )
+    async def delete_topic(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topic = next(
+            (
+                item
+                for item in panel.get(
+                    "topics",
+                    []
+                )
+                if str(item.get("id"))
+                == self.topic_id
+            ),
+            None
+        )
+
+        if not topic:
+            return await interaction.response.send_message(
+                "❌ Este tópico não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            f"⚠️ **Excluir o tópico "
+            f"`{topic.get('name', 'Tópico')}`?**\n\n"
+            "Essa ação não apagará tickets que já foram criados.",
+            view=NewTicketTopicDeleteView(
+                self.panel_id,
+                self.topic_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketTopicDeleteView(discord.ui.View):
+    def __init__(
+        self,
+        panel_id,
+        topic_id
+    ):
+        super().__init__(
+            timeout=60
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.topic_id = str(
+            topic_id
+        )
+
+    @discord.ui.button(
+        label="Excluir tópico",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm_delete(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.edit_message(
+                content="❌ Este painel não existe mais.",
+                view=None
+            )
+
+        topics = panel.get(
+            "topics",
+            []
+        )
+
+        original_count = len(
+            topics
+        )
+
+        panel["topics"] = [
+            topic
+            for topic in topics
+            if str(topic.get("id"))
+            != self.topic_id
+        ]
+
+        if len(panel["topics"]) == original_count:
+            return await interaction.response.edit_message(
+                content="❌ Este tópico já foi excluído.",
+                view=None
+            )
+
+        save_ticket_data(
+            data
+        )
+
+        await interaction.response.edit_message(
+            content="🗑️ **Tópico excluído com sucesso.**",
+            view=None
+        )
+
+    @discord.ui.button(
+        label="Cancelar",
+        emoji="❌",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel_delete(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            content="✅ Exclusão cancelada.",
+            view=None
+        )
+
+class NewTicketTopicEditModal(discord.ui.Modal):
+    def __init__(
+        self,
+        panel_id,
+        topic_id
+    ):
+        super().__init__(
+            title="✏️ Editar tópico"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.topic_id = str(
+            topic_id
+        )
+
+        panel = ticket_get_panel(
+            self.panel_id
+        ) or {}
+
+        topic = next(
+            (
+                item
+                for item in panel.get(
+                    "topics",
+                    []
+                )
+                if str(item.get("id"))
+                == self.topic_id
+            ),
+            {}
+        )
+
+        self.name_input = discord.ui.TextInput(
+            label="Nome",
+            default=topic.get(
+                "name",
+                ""
+            )[:80],
+            max_length=80,
+            required=True
+        )
+
+        self.emoji_input = discord.ui.TextInput(
+            label="Emoji",
+            default=topic.get(
+                "emoji",
+                "🎫"
+            ),
+            max_length=10,
+            required=False
+        )
+
+        self.description_input = discord.ui.TextInput(
+            label="Descrição",
+            default=topic.get(
+                "description",
+                ""
+            )[:500],
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=True
+        )
+
+        self.category_input = discord.ui.TextInput(
+            label="ID da categoria",
+            default=str(
+                topic.get(
+                    "category_id",
+                    ""
+                ) or ""
+            ),
+            max_length=30,
+            required=False
+        )
+
+        self.staff_role_input = discord.ui.TextInput(
+            label="ID do cargo da equipe",
+            default=str(
+                topic.get(
+                    "staff_role_id",
+                    ""
+                ) or ""
+            ),
+            max_length=30,
+            required=False
+        )
+
+        self.add_item(
+            self.name_input
+        )
+
+        self.add_item(
+            self.emoji_input
+        )
+
+        self.add_item(
+            self.description_input
+        )
+
+        self.add_item(
+            self.category_input
+        )
+
+        self.add_item(
+            self.staff_role_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topic = next(
+            (
+                item
+                for item in panel.get(
+                    "topics",
+                    []
+                )
+                if str(item.get("id"))
+                == self.topic_id
+            ),
+            None
+        )
+
+        if not topic:
+            return await interaction.response.send_message(
+                "❌ Este tópico não existe mais.",
+                ephemeral=True
+            )
+
+        category_id = (
+            self.category_input.value.strip()
+        )
+
+        staff_role_id = (
+            self.staff_role_input.value.strip()
+        )
+
+        topic["name"] = (
+            self.name_input.value.strip()
+        )
+
+        topic["emoji"] = (
+            self.emoji_input.value.strip()
+            or "🎫"
+        )
+
+        topic["description"] = (
+            self.description_input.value.strip()
+        )
+
+        topic["category_id"] = (
+            int(category_id)
+            if category_id.isdigit()
+            else panel.get("category_id")
+        )
+
+        topic["staff_role_id"] = (
+            int(staff_role_id)
+            if staff_role_id.isdigit()
+            else panel.get("staff_role_id")
+        )
+
+        save_ticket_data(
+            data
+        )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            status = (
+                "📤 O painel publicado também foi atualizado."
+            )
+        else:
+            status = (
+                "⚠️ O tópico foi atualizado, "
+                "mas o painel publicado não foi encontrado."
+            )
+
+        await interaction.response.send_message(
+            f"✅ Tópico **{topic['name']}** atualizado.\n\n"
+            f"{status}",
+            ephemeral=True
+        )
+
+class NewTicketTopicModal(discord.ui.Modal):
+    def __init__(self, panel_id):
+        super().__init__(
+            title="📚 Adicionar tópico"
+        )
+
+        self.panel_id = str(panel_id)
+
+        self.name_input = discord.ui.TextInput(
+            label="Nome do tópico",
+            placeholder="Ex: Suporte",
+            max_length=80,
+            required=True
+        )
+
+        self.emoji_input = discord.ui.TextInput(
+            label="Emoji",
+            placeholder="Ex: 🛠️",
+            max_length=10,
+            required=False
+        )
+
+        self.description_input = discord.ui.TextInput(
+            label="Descrição",
+            placeholder="Ex: Problemas e dúvidas gerais.",
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=True
+        )
+
+        self.category_input = discord.ui.TextInput(
+            label="ID da categoria",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=False
+        )
+
+        self.staff_role_input = discord.ui.TextInput(
+            label="ID do cargo da equipe",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=False
+        )
+
+        self.add_item(self.name_input)
+        self.add_item(self.emoji_input)
+        self.add_item(self.description_input)
+        self.add_item(self.category_input)
+        self.add_item(self.staff_role_input)
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        category_id = self.category_input.value.strip()
+
+        topic = create_ticket_topic(
+            name=self.name_input.value.strip(),
+            description=self.description_input.value.strip(),
+            emoji=self.emoji_input.value.strip() or "🎫",
+            category_id=(
+                int(category_id)
+                if category_id.isdigit()
+                else panel.get("category_id")
+            ),
+            staff_role_id=(
+                int(staff_role_id)
+                if staff_role_id.isdigit()
+                else panel.get("staff_role_id")
+            )
+        )
+
+        data = ticket_data()
+
+        data["panels"][
+            self.panel_id
+        ].setdefault(
+            "topics",
+            []
+        )
+
+        data["panels"][
+            self.panel_id
+        ]["topics"].append(
+            topic
+        )
+
+        save_ticket_data(
+            data
+        )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            status = (
+                "📤 O painel publicado também foi atualizado."
+            )
+        else:
+            status = (
+                "⚠️ O tópico foi salvo, "
+                "mas o painel publicado não foi encontrado."
+            )
+
+        await interaction.response.send_message(
+            f"✅ Tópico **{topic['name']}** "
+            "adicionado ao painel.\n\n"
+            f"{status}",
+            ephemeral=True
+        )
+
+class NewTicketPanelModal(discord.ui.Modal):
+    def __init__(self, ticket_type="single"):
+        super().__init__(
+            title="🎫 Criar painel de tickets"
+        )
+
+        self.ticket_type = ticket_type
+
+        self.name_input = discord.ui.TextInput(
+            label="Nome do painel",
+            placeholder="Ex: Central de Suporte",
+            max_length=100,
+            required=True
+        )
+
+        self.description_input = discord.ui.TextInput(
+            label="Descrição",
+            placeholder="Explique para que serve este painel...",
+            style=discord.TextStyle.paragraph,
+            max_length=1000,
+            required=True
+        )
+
+        self.category_input = discord.ui.TextInput(
+            label="ID da categoria",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=False
+        )
+
+        self.channel_input = discord.ui.TextInput(
+            label="ID do canal do painel",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=True
+        )
+
+        self.log_channel_input = discord.ui.TextInput(
+            label="ID do canal de logs",
+            placeholder="Ex: 123456789012345678",
+            max_length=30,
+            required=False
+        )
+
+        self.add_item(self.name_input)
+        self.add_item(self.description_input)
+        self.add_item(self.category_input)
+        self.add_item(self.channel_input)
+        self.add_item(self.log_channel_input)
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        panel = create_ticket_panel_data()
+        panel["guild_id"] = interaction.guild.id
+        panel["name"] = self.name_input.value.strip()
+        panel["description"] = self.description_input.value.strip()
+
+        panel["ticket_type"] = self.ticket_type
+
+        category_id = self.category_input.value.strip()
+        staff_role_id = self.staff_role_input.value.strip()
+        channel_id = self.channel_input.value.strip()
+        log_channel_id = self.log_channel_input.value.strip()
+
+        panel["category_id"] = (
+            int(category_id)
+            if category_id.isdigit()
+            else None
+        )
+
+        panel["channel_id"] = (
+            int(channel_id)
+            if channel_id.isdigit()
+            else None
+        )
+        
+        panel["log_channel_id"] = (
+            int(log_channel_id)
+            if log_channel_id.isdigit()
+            else None
+        )
+
+        save_new_ticket_panel(panel)
+
+        if self.ticket_type == "topics":
+    await interaction.response.send_message(
+        "📚 **Painel criado!**\n\n"
+        "Agora configure os tópicos deste painel.",
+        view=NewTicketTopicsView(
+            panel["id"]
+        ),
+        ephemeral=True
+    )
+        else:
+    channel = ticket_get_channel(
+        interaction.guild,
+        panel.get("channel_id")
+    )
+
+    if not channel:
+        return await interaction.response.send_message(
+            "⚠️ O painel foi salvo, mas o canal configurado "
+            "não foi encontrado.",
+            ephemeral=True
+        )
+
+    try:
+        await send_new_ticket_panel(
+            channel,
+            panel
+        )
+
+        await interaction.response.send_message(
+            f"✅ **Painel criado e publicado!**\n\n"
+            f"📍 Canal: {channel.mention}",
+            ephemeral=True
+        )
+
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "❌ Não tenho permissão para enviar mensagens "
+            "nesse canal.",
+            ephemeral=True
+        )
+
+    except Exception as error:
+        print(
+            f"[TICKET] Erro ao publicar painel: {error}"
+        )
+
+        await interaction.response.send_message(
+            "⚠️ O painel foi salvo, mas ocorreu um erro "
+            "ao publicá-lo.",
+            ephemeral=True
+        )
+
+class NewTicketCreateView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(
+        label="Ticket único",
+        emoji="🎫",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def single_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_modal(
+            NewTicketPanelModal(
+                ticket_type="single"
+            )
+        )
+
+    @discord.ui.button(
+        label="Tickets por tópico",
+        emoji="📚",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def topic_tickets(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_modal(
+            NewTicketPanelModal(
+                ticket_type="topics"
+            )
+        )
+
+    @discord.ui.button(
+        label="Voltar",
+        emoji="◀️",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def back(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            content=None,
+            embed=None,
+            view=NewTicketPanelConfigView()
+        )
+
+class NewTicketPanelConfigView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(
+        label="Criar painel",
+        emoji="➕",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def create_panel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_message(
+            "🎫 Vamos criar seu painel de tickets.",
+            view=NewTicketCreateView(),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Gerenciar painéis",
+        emoji="🛠️",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def manage_panels(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        panels = [
+            panel
+            for panel in data.get(
+                "panels",
+                {}
+            ).values()
+            if str(panel.get("guild_id", interaction.guild.id))
+            == str(interaction.guild.id)
+        ]
+
+        if not panels:
+            return await interaction.response.send_message(
+                "📭 Este servidor ainda não possui painéis de tickets.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "🛠️ **Gerenciamento de painéis**\n\n"
+            "Selecione o painel que deseja gerenciar.",
+            view=NewTicketPanelManageView(
+                panels
+            ),
+            ephemeral=True
+        )
+
+class NewTicketPanelManageButton(discord.ui.Button):
+    def __init__(self, panel):
+        self.panel_id = str(
+            panel.get("id")
+        )
+
+        super().__init__(
+            label=panel.get(
+                "name",
+                "Painel"
+            )[:80],
+            emoji="🎫",
+            style=discord.ButtonStyle.primary,
+            custom_id=(
+                f"new_ticket_manage:"
+                f"{self.panel_id}"
+            )
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        topics = panel.get(
+            "topics",
+            []
+        )
+
+        topic_text = (
+            "\n".join(
+                f"{topic.get('emoji', '🎫')} "
+                f"**{topic.get('name', 'Sem nome')}**"
+                for topic in topics
+            )
+            if topics
+            else "Nenhum tópico configurado."
+        )
+
+        embed = discord.Embed(
+            title=f"🎫 {panel.get('name', 'Painel')}",
+            description=panel.get(
+                "description",
+                "Sem descrição."
+            ),
+            color=discord.Color.blurple()
+        )
+
+        embed.add_field(
+            name="📚 Tópicos",
+            value=topic_text[:1024],
+            inline=False
+        )
+
+        embed.add_field(
+            name="📍 Canal",
+            value=(
+                f"<#{panel.get('channel_id')}>"
+                if panel.get("channel_id")
+                else "Não configurado"
+            ),
+            inline=True
+        )
+
+        embed.add_field(
+            name="📋 Tipo",
+            value=(
+                "Por tópicos"
+                if panel.get("ticket_type") == "topics"
+                else "Ticket único"
+            ),
+            inline=True
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=NewTicketPanelActionsView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketPanelActionsView(discord.ui.View):
+    def __init__(self, panel_id):
+        super().__init__(
+            timeout=300
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+    @discord.ui.button(
+        label="Editar",
+        emoji="✏️",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def edit_panel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "✏️ **Editar painel**\n\n"
+            "Escolha o que deseja alterar.",
+            view=NewTicketPanelEditView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Republicar",
+        emoji="📤",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def republish_panel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        channel = ticket_get_channel(
+            interaction.guild,
+            panel.get("channel_id")
+        )
+
+        if not channel:
+            return await interaction.response.send_message(
+                "❌ O canal deste painel não foi encontrado.",
+                ephemeral=True
+            )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            return await interaction.response.send_message(
+                f"✅ O painel existente foi atualizado em "
+                f"{channel.mention}.",
+                ephemeral=True
+            )
+
+        try:
+            message = await send_new_ticket_panel(
+                channel,
+                panel
+            )
+
+            if not message:
+                return await interaction.response.send_message(
+                    "❌ Não foi possível publicar o painel.",
+                    ephemeral=True
+                )
+
+            await interaction.response.send_message(
+                f"✅ **Painel publicado!**\n\n"
+                f"📍 Canal: {channel.mention}",
+                ephemeral=True
+            )
+
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "❌ Não tenho permissão para enviar mensagens "
+                "nesse canal.",
+                ephemeral=True
+            )
+
+        except Exception as error:
+            print(
+                f"[TICKET] Erro ao republicar painel: {error}"
+            )
+
+            await interaction.response.send_message(
+                "❌ Não foi possível republicar o painel.",
+                ephemeral=True
+            )
+
+    @discord.ui.button(
+        label="Excluir",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger,
+        row=1
+    )
+    async def delete_panel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "⚠️ **Excluir este painel?**\n\n"
+            "Os tickets já existentes não serão apagados.",
+            view=NewTicketDeletePanelView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketPanelEditView(discord.ui.View):
+    def __init__(self, panel_id):
+        super().__init__(
+            timeout=300
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+    @discord.ui.button(
+        label="Nome e descrição",
+        emoji="📝",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def edit_info(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketPanelInfoEditModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Canal e logs",
+        emoji="📍",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def edit_channels(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketPanelChannelsEditModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Limite de tickets",
+        emoji="🎫",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def edit_limit(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketPanelLimitModal(
+                self.panel_id
+            )
+        )
+
+        @discord.ui.button(
+        label="Cor do painel",
+        emoji="🎨",
+        style=discord.ButtonStyle.secondary,
+        row=2
+    )
+    async def edit_color(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            NewTicketPanelColorModal(
+                self.panel_id
+            )
+        )
+    @discord.ui.button(
+        label="Tópicos",
+        emoji="📚",
+        style=discord.ButtonStyle.success,
+        row=1
+    )
+    async def edit_topics(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        panel = ticket_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        if panel.get("ticket_type") != "topics":
+            return await interaction.response.send_message(
+                "ℹ️ Este painel não utiliza tickets por tópico.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "📚 **Gerenciar tópicos**",
+            view=NewTicketTopicsView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+class NewTicketPanelColorModal(discord.ui.Modal):
+    def __init__(self, panel_id):
+        super().__init__(
+            title="🎨 Cor do painel"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        panel = ticket_get_panel(
+            self.panel_id
+        ) or {}
+
+        self.color_input = discord.ui.TextInput(
+            label="Cor HEX",
+            default=str(
+                panel.get(
+                    "color",
+                    "5865F2"
+                )
+            ),
+            placeholder="Ex: 5865F2 ou #5865F2",
+            max_length=7,
+            required=True
+        )
+
+        self.add_item(
+            self.color_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        color = (
+            self.color_input.value
+            .strip()
+            .replace("#", "")
+        )
+
+        if len(color) != 6:
+            return await interaction.response.send_message(
+                "❌ A cor precisa ter exatamente 6 caracteres HEX.",
+                ephemeral=True
+            )
+
+        try:
+            int(
+                color,
+                16
+            )
+        except ValueError:
+            return await interaction.response.send_message(
+                "❌ Essa não é uma cor HEX válida.",
+                ephemeral=True
+            )
+
+        panel["color"] = color.upper()
+
+        save_ticket_data(
+            data
+        )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            status = (
+                "📤 A mensagem publicada também foi atualizada."
+            )
+        else:
+            status = (
+                "⚠️ A cor foi salva, "
+                "mas não encontrei a mensagem publicada."
+            )
+
+        await interaction.response.send_message(
+            f"🎨 Cor do painel alterada para "
+            f"`#{color.upper()}`.\n\n"
+            f"{status}",
+            ephemeral=True
+        )
+
+class NewTicketPanelInfoEditModal(discord.ui.Modal):
+    def __init__(self, panel_id):
+        super().__init__(
+            title="📝 Editar painel"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        panel = ticket_get_panel(
+            self.panel_id
+        ) or {}
+
+        self.name_input = discord.ui.TextInput(
+            label="Nome do painel",
+            default=panel.get(
+                "name",
+                "Suporte"
+            )[:100],
+            max_length=100,
+            required=True
+        )
+
+        self.description_input = discord.ui.TextInput(
+            label="Descrição",
+            default=panel.get(
+                "description",
+                ""
+            )[:1000],
+            style=discord.TextStyle.paragraph,
+            max_length=1000,
+            required=True
+        )
+
+        self.add_item(
+            self.name_input
+        )
+
+        self.add_item(
+            self.description_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        panel["name"] = (
+            self.name_input.value.strip()
+        )
+
+        panel["description"] = (
+            self.description_input.value.strip()
+        )
+
+        save_ticket_data(
+            data
+        )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            status = (
+                "📤 A mensagem publicada também foi atualizada."
+            )
+        else:
+            status = (
+                "⚠️ Os dados foram salvos, "
+                "mas não encontrei a mensagem publicada "
+                "para atualizar."
+            )
+
+        await interaction.response.send_message(
+            "✅ **Painel atualizado!**\n\n"
+            f"📝 Nome: **{panel['name']}**\n"
+            f"{status}",
+            ephemeral=True
+        )
+
+class NewTicketPanelChannelsEditModal(discord.ui.Modal):
+    def __init__(self, panel_id):
+        super().__init__(
+            title="📍 Canais do painel"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        panel = ticket_get_panel(
+            self.panel_id
+        ) or {}
+
+        self.channel_input = discord.ui.TextInput(
+            label="ID do canal do painel",
+            default=str(
+                panel.get(
+                    "channel_id",
+                    ""
+                )
+            ),
+            placeholder="123456789012345678",
+            max_length=30,
+            required=True
+        )
+
+        self.log_channel_input = discord.ui.TextInput(
+            label="ID do canal de logs",
+            default=str(
+                panel.get(
+                    "log_channel_id",
+                    ""
+                )
+            ),
+            placeholder="123456789012345678",
+            max_length=30,
+            required=False
+        )
+
+        self.add_item(
+            self.channel_input
+        )
+
+        self.add_item(
+            self.log_channel_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        channel_id = (
+            self.channel_input.value.strip()
+        )
+
+        log_channel_id = (
+            self.log_channel_input.value.strip()
+        )
+
+        if not channel_id.isdigit():
+            return await interaction.response.send_message(
+                "❌ O ID do canal do painel é inválido.",
+                ephemeral=True
+            )
+
+        if (
+            log_channel_id
+            and not log_channel_id.isdigit()
+        ):
+            return await interaction.response.send_message(
+                "❌ O ID do canal de logs é inválido.",
+                ephemeral=True
+            )
+
+        panel["channel_id"] = int(
+            channel_id
+        )
+
+        panel["log_channel_id"] = (
+            int(log_channel_id)
+            if log_channel_id
+            else None
+        )
+
+        save_ticket_data(
+            data
+        )
+
+        await interaction.response.send_message(
+            "✅ **Canais atualizados!**\n\n"
+            f"📍 Canal do painel: <#{panel['channel_id']}>\n"
+            + (
+                f"📚 Canal de logs: <#{panel['log_channel_id']}>"
+                if panel.get("log_channel_id")
+                else "📚 Canal de logs: não configurado"
+            ),
+            ephemeral=True
+        )
+
+class NewTicketPanelLimitModal(discord.ui.Modal):
+    def __init__(self, panel_id):
+        super().__init__(
+            title="🎫 Limite de tickets"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        panel = ticket_get_panel(
+            self.panel_id
+        ) or {}
+
+        self.limit_input = discord.ui.TextInput(
+            label="Máximo de tickets por usuário",
+            default=str(
+                panel.get(
+                    "max_tickets_per_user",
+                    1
+                )
+            ),
+            placeholder="Ex: 1",
+            max_length=2,
+            required=True
+        )
+
+        self.add_item(
+            self.limit_input
+        )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Este painel não existe mais.",
+                ephemeral=True
+            )
+
+        value = self.limit_input.value.strip()
+
+        if not value.isdigit():
+            return await interaction.response.send_message(
+                "❌ Informe apenas um número.",
+                ephemeral=True
+            )
+
+        limit = int(value)
+
+        if limit < 1 or limit > 10:
+            return await interaction.response.send_message(
+                "❌ O limite deve estar entre **1 e 10**.",
+                ephemeral=True
+            )
+
+        panel["max_tickets_per_user"] = limit
+
+        save_ticket_data(
+            data
+        )
+
+        await interaction.response.send_message(
+            f"✅ Limite atualizado para "
+            f"**{limit} ticket(s)** por usuário.",
+            ephemeral=True
+        )
+
+class NewTicketDeletePanelView(discord.ui.View):
+    def __init__(self, panel_id):
+        super().__init__(
+            timeout=60
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+    @discord.ui.button(
+        label="Confirmar exclusão",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm_delete(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        panel = data.get(
+            "panels",
+            {}
+        ).get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.edit_message(
+                content="❌ Este painel já não existe.",
+                view=None
+            )
+
+        # Remove somente o painel salvo.
+        # Tickets existentes continuam funcionando normalmente.
+
+        channel = ticket_get_channel(
+            interaction.guild,
+            panel.get("channel_id")
+        )
+
+        message_id = panel.get("message_id")
+
+        if channel and message_id:
+            try:
+                message = await channel.fetch_message(
+                    int(message_id)
+                )
+
+                await message.delete()
+
+            except (
+                discord.NotFound,
+                discord.Forbidden,
+                discord.HTTPException
+            ):
+                pass
+                
+        data["panels"].pop(
+            self.panel_id,
+            None
+        )
+
+        save_ticket_data(
+            data
+        )
+
+        updated = await update_new_ticket_panel_message(
+            interaction.guild,
+            panel
+        )
+
+        if updated:
+            status = (
+                "📤 O painel publicado também foi atualizado."
+            )
+        else:
+            status = (
+                "⚠️ O tópico foi excluído, "
+                "mas o painel publicado não foi encontrado."
+            )
+
+        await interaction.response.edit_message(
+            content=(
+                "🗑️ **Tópico excluído com sucesso.**\n\n"
+                f"{status}"
+            ),
+            view=None
+        )
+
+    @discord.ui.button(
+        label="Cancelar",
+        emoji="❌",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel_delete(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            content="✅ Exclusão cancelada.",
+            view=None
+        )
+
+    @discord.ui.button(
+        label="Tickets abertos",
+        emoji="🎫",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def open_tickets(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        data = ticket_data()
+
+        guild_tickets = [
+            ticket
+            for ticket in data.get("tickets", {}).values()
+            if str(ticket.get("guild_id")) == str(
+                interaction.guild.id
+            )
+            and not ticket.get("closed", False)
+        ]
+
+        if not guild_tickets:
+            return await interaction.response.send_message(
+                "📭 Não existem tickets abertos neste servidor.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            f"🎫 Existem **{len(guild_tickets)}** "
+            "ticket(s) aberto(s) neste servidor.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Configurações",
+        emoji="⚙️",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def settings(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_message(
+            "⚙️ Configurações gerais do sistema de tickets.",
+            ephemeral=True
+        )
 class PainelPrincipalView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=300)
@@ -4647,13 +7973,41 @@ class PainelPrincipalView(discord.ui.View):
         )
 
     @discord.ui.button(label="Tickets", emoji="🎫", style=discord.ButtonStyle.success, row=0)
-    async def tickets(self, interaction, button):
-        await interaction.response.send_message(
-            "🎫 Configurações de Tickets",
-            view=TicketPainelConfigView(),
-            ephemeral=True
+        @discord.ui.button(
+        label="Tickets",
+        emoji="🎫",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def tickets(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        embed = discord.Embed(
+            title="🎫 Sistema de Tickets",
+            description=(
+                "Configure e gerencie os painéis de atendimento "
+                "do seu servidor.\n\n"
+                "Escolha uma opção abaixo:"
+            ),
+            color=discord.Color.blurple()
         )
 
+        embed.add_field(
+            name="🎫 Painéis",
+            value=(
+                "Crie painéis de tickets simples ou "
+                "com vários tópicos."
+            ),
+            inline=False
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=NewTicketPanelConfigView(),
+            ephemeral=True
+        )
     @discord.ui.button(label="Ponto", emoji="⏱️", style=discord.ButtonStyle.success, row=0)
     async def ponto(self, interaction, button):
         await interaction.response.send_modal(PontoPainelModal())
@@ -5556,6 +8910,13 @@ async def synchronize_commands():
         print(
             f"[SLASH] Erro ao sincronizar comandos globais: "
             f"{type(error).__name__}: {error}"
+        )
+    try:
+        await restore_ticket_panel_views()
+        print("[TICKET] Painéis restaurados com sucesso.")
+    except Exception as error:
+        print(
+            f"[TICKET] Erro ao restaurar painéis: {error}"
         )
 
 
