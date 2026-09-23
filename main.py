@@ -568,7 +568,9 @@ bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 # ============================================================
 # 🎫 TICKET V3 ULTIMATE
 # Sistema profissional de tickets
-# ===========================================================
+# ============================================================
+
+from __future__ import annotations
 
 import io
 import json
@@ -580,6 +582,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+
 
 T3_FILE = Path("tickets_v3.json")
 T3_VERSION = 3
