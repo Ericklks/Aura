@@ -16,6 +16,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+DATA_FILE = Path('ticket_panels.json')
 COMMAND_PREFIX = os.getenv('BOT_PREFIX', '!')
 SITE_URL = os.getenv('SITE_URL', 'https://furiousbot1.netlify.app').rstrip('/')
 PAINEL_GIF_URL = 'https://www.bing.com/th/id/OGC.42d13870a89f09149fad3fa40c54b19f?r=0&o=7&pid=1.7&rm=3&rurl=https%3a%2f%2fi.pinimg.com%2foriginals%2fc3%2f7c%2fd2%2fc37cd207c15f7e1a5110329668a569d0.gif&ehk=XH%2b7BxOfCVISigu85Np9fd7DGVEOsed1YxFCHyDFmrw%3d'
