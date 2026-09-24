@@ -10175,7 +10175,54 @@ async def t3_open_delete_manager(
 print("[TICKET V3] Gerenciador de exclusão carregado.")
 # <<< TICKET V3 DELETE MANAGER <<<
 
+# ============================================================
+# 💾 CARREGAMENTO CENTRAL DOS DADOS
+# Deve ocorrer antes de qualquer sistema que utilize `data`.
+# ============================================================
 
+data = load_data()
+data.setdefault('panels', {})
+data.setdefault('tickets', {})
+data.setdefault('timeclock', {})
+data.setdefault('finance', {})
+data.setdefault('levels', {})
+data.setdefault('polls', {})
+data.setdefault('warnings', {})
+data.setdefault('starboard', {})
+data.setdefault('giveaways', {})
+data.setdefault('reputations', {})
+data.setdefault('security', {})
+data.setdefault('internal_logs', {'channel_id': None, 'guild_id': None})
+data.setdefault('verification', {})
+data.setdefault('fun', {})
+data.setdefault('reminders', {})
+data.setdefault('channel_snapshots', {})
+data.setdefault('server_events', {})
+data.setdefault('guild_settings', {})
+data.setdefault('bot_profile', {})
+data.setdefault('weekly_xp', {})
+data.setdefault('streaks', {})
+data.setdefault('economy_inventory', {})
+data.setdefault('transfers', [])
+data.setdefault('work_cooldowns', {})
+data.setdefault('rob_cooldowns', {})
+data['bot_profile'].setdefault('bot_status', 'online')
+data['bot_profile'].setdefault('bot_activity', None)
+data['bot_profile'].setdefault('bot_name', None)
+legacy_settings = data.pop('settings', None)
+if legacy_settings and (not data['guild_settings']):
+    data['bot_profile']['bot_status'] = legacy_settings.get('bot_status', data['bot_profile']['bot_status'])
+    data['bot_profile']['bot_activity'] = legacy_settings.get('bot_activity', data['bot_profile']['bot_activity'])
+    data['bot_profile']['bot_name'] = legacy_settings.get('bot_name', data['bot_profile']['bot_name'])
+    known_guild_ids = {str(record['guild_id']) for record in data['panels'].values() if record.get('guild_id')}
+    known_guild_ids.update(data['timeclock'])
+    known_guild_ids.update(data['finance'])
+    known_guild_ids.update(data['security'])
+    known_guild_ids.update(data['channel_snapshots'])
+    known_guild_ids.update(data['server_events'])
+    if known_guild_ids:
+        data['guild_settings'][sorted(known_guild_ids)[0]] = {'max_tickets_per_user': legacy_settings.get('max_tickets_per_user', 1), 'log_channels': legacy_settings.get('log_channels', {}), 'daily_reward': legacy_settings.get('daily_reward', 500), 'timeclock_channel_id': legacy_settings.get('timeclock_channel_id'), 'default_staff_role_id': legacy_settings.get('default_staff_role_id'), 'default_log_channel_id': legacy_settings.get('default_log_channel_id')}
+        save_data()
 
 # >>> SISTEMAS COMPLETOS V1 >>>
 # ============================================================
@@ -10458,92 +10505,6 @@ async def sistema_kick(
 
     await interaction.response.send_message(
         f"👢 {membro.mention} foi expulso."
-    )
-
-
-@bot.tree.command(
-    name="timeout",
-    description="Aplica timeout em um membro."
-)
-@app_commands.checks.has_permissions(
-    moderate_members=True
-)
-async def sistema_timeout(
-    interaction,
-    membro: discord.Member,
-    minutos: app_commands.Range[int, 1, 40320],
-    motivo: str = "Sem motivo"
-):
-    try:
-        until = datetime.now(
-            timezone.utc
-        ) + timedelta(
-            minutes=minutos
-        )
-
-        await membro.edit(
-            timed_out_until=until,
-            reason=motivo
-        )
-
-    except discord.Forbidden:
-        await interaction.response.send_message(
-            "❌ Não tenho permissão para aplicar timeout.",
-            ephemeral=True
-        )
-        return
-
-    adv_record_moderation(
-        interaction.guild.id,
-        membro.id,
-        "timeout",
-        motivo
-    )
-
-    save_data()
-
-    await adv_log(
-        interaction.guild,
-        "⏳ Timeout aplicado",
-        (
-            f"**Usuário:** {membro.mention}\n"
-            f"**Duração:** {minutos} minuto(s)\n"
-            f"**Moderador:** {interaction.user.mention}\n"
-            f"**Motivo:** {motivo}"
-        ),
-        discord.Color.orange()
-    )
-
-    await interaction.response.send_message(
-        f"⏳ {membro.mention} recebeu timeout de {minutos} minuto(s)."
-    )
-
-
-@bot.tree.command(
-    name="untimeout",
-    description="Remove o timeout de um membro."
-)
-@app_commands.checks.has_permissions(
-    moderate_members=True
-)
-async def sistema_untimeout(
-    interaction,
-    membro: discord.Member
-):
-    try:
-        await membro.edit(
-            timed_out_until=None,
-            reason=f"Removido por {interaction.user}"
-        )
-    except discord.Forbidden:
-        await interaction.response.send_message(
-            "❌ Não tenho permissão.",
-            ephemeral=True
-        )
-        return
-
-    await interaction.response.send_message(
-        f"✅ Timeout removido de {membro.mention}."
     )
 
 
@@ -11001,187 +10962,16 @@ def sistema_xp_required(level):
     )
 
 
-@bot.tree.command(
-    name="rank",
-    description="Mostra seu nível e XP."
-)
-async def sistema_rank(
-    interaction,
-    membro: discord.Member | None = None
-):
-    membro = membro or interaction.user
-
-    record = sistema_xp_record(
-        interaction.guild.id,
-        membro.id
-    )
-
-    required = sistema_xp_required(
-        record["level"]
-    )
-
-    embed = discord.Embed(
-        title=f"⭐ Rank de {membro.display_name}",
-        color=discord.Color.gold()
-    )
-
-    embed.add_field(
-        name="Nível",
-        value=str(record["level"])
-    )
-
-    embed.add_field(
-        name="XP",
-        value=f"{record['xp']} / {required}"
-    )
-
-    embed.add_field(
-        name="Mensagens",
-        value=str(record["messages"])
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
 
 
-@bot.tree.command(
-    name="ranking",
-    description="Mostra o ranking de níveis."
-)
-async def sistema_ranking(
-    interaction
-):
-    guild_data = data["xp_system"].get(
-        str(interaction.guild.id),
-        {}
-    )
-
-    ranking = []
-
-    for user_id, record in guild_data.items():
-        ranking.append(
-            (
-                int(
-                    record.get(
-                        "level",
-                        0
-                    )
-                ),
-                int(
-                    record.get(
-                        "xp",
-                        0
-                    )
-                ),
-                int(user_id)
-            )
-        )
-
-    ranking.sort(
-        reverse=True
-    )
-
-    lines = []
-
-    for index, (
-        level,
-        xp,
-        user_id
-    ) in enumerate(
-        ranking[:10],
-        1
-    ):
-        lines.append(
-            f"**{index}.** <@{user_id}> — "
-            f"Nível **{level}** • **{xp} XP**"
-        )
-
-    embed = discord.Embed(
-        title="🏆 Ranking de níveis",
-        description="\n".join(lines) or "Nenhum XP registrado.",
-        color=discord.Color.gold()
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
 
 
 # ============================================================
 # 📨 COMUNIDADE
 # ============================================================
 
-@bot.tree.command(
-    name="anuncio",
-    description="Envia um anúncio em um canal."
-)
-@app_commands.checks.has_permissions(
-    manage_guild=True
-)
-async def sistema_anuncio(
-    interaction,
-    canal: discord.TextChannel,
-    titulo: str,
-    mensagem: str
-):
-    embed = discord.Embed(
-        title=titulo,
-        description=mensagem,
-        color=discord.Color.blurple(),
-        timestamp=datetime.now(
-            timezone.utc
-        )
-    )
-
-    embed.set_footer(
-        text=f"Publicado por {interaction.user.display_name}"
-    )
-
-    await canal.send(
-        embed=embed
-    )
-
-    await interaction.response.send_message(
-        f"📢 Anúncio enviado para {canal.mention}.",
-        ephemeral=True
-    )
 
 
-@bot.tree.command(
-    name="enquete",
-    description="Cria uma enquete simples."
-)
-@app_commands.checks.has_permissions(
-    manage_messages=True
-)
-async def sistema_enquete(
-    interaction,
-    pergunta: str,
-    opcao1: str,
-    opcao2: str
-):
-    embed = discord.Embed(
-        title="📊 Enquete",
-        description=(
-            f"**{pergunta}**\n\n"
-            f"1️⃣ {opcao1}\n"
-            f"2️⃣ {opcao2}"
-        ),
-        color=discord.Color.blurple()
-    )
-
-    message = await interaction.channel.send(
-        embed=embed
-    )
-
-    await message.add_reaction("1️⃣")
-    await message.add_reaction("2️⃣")
-
-    await interaction.response.send_message(
-        "📊 Enquete criada.",
-        ephemeral=True
-    )
 
 
 @bot.tree.command(
@@ -11292,77 +11082,12 @@ async def sistema_bot_whitelist(
 # 📊 STATUS
 # ============================================================
 
-@bot.tree.command(
-    name="status",
-    description="Mostra o status do bot."
-)
-async def sistema_status(
-    interaction
-):
-    latency = round(
-        bot.latency * 1000
-    )
-
-    embed = discord.Embed(
-        title="🤖 Status do bot",
-        color=discord.Color.green()
-    )
-
-    embed.add_field(
-        name="🏓 Ping",
-        value=f"{latency} ms"
-    )
-
-    embed.add_field(
-        name="🏠 Servidores",
-        value=str(
-            len(bot.guilds)
-        )
-    )
-
-    embed.add_field(
-        name="👥 Usuários",
-        value=str(
-            len(bot.users)
-        )
-    )
-
-    embed.add_field(
-        name="⏱️ Uptime",
-        value=format_uptime()
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
 
 
 # ============================================================
 # 👤 UTILIDADES
 # ============================================================
 
-@bot.tree.command(
-    name="avatar",
-    description="Mostra o avatar de um usuário."
-)
-async def sistema_avatar(
-    interaction,
-    membro: discord.Member | None = None
-):
-    membro = membro or interaction.user
-
-    embed = discord.Embed(
-        title=f"🖼️ Avatar de {membro.display_name}",
-        color=discord.Color.blurple()
-    )
-
-    embed.set_image(
-        url=membro.display_avatar.url
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
 
 
 @bot.tree.command(
@@ -11587,50 +11312,6 @@ async def sistema_channelinfo(
     )
 
 
-@bot.tree.command(
-    name="botinfo",
-    description="Mostra informações do bot."
-)
-async def sistema_botinfo(
-    interaction
-):
-    embed = discord.Embed(
-        title="🤖 Informações do bot",
-        color=discord.Color.blurple()
-    )
-
-    embed.add_field(
-        name="Nome",
-        value=str(
-            bot.user
-        )
-    )
-
-    embed.add_field(
-        name="ID",
-        value=f"`{bot.user.id}`"
-    )
-
-    embed.add_field(
-        name="Python",
-        value=sys.version.split()[0]
-    )
-
-    embed.add_field(
-        name="discord.py",
-        value=discord.__version__
-    )
-
-    embed.add_field(
-        name="Servidores",
-        value=str(
-            len(bot.guilds)
-        )
-    )
-
-    await interaction.response.send_message(
-        embed=embed
-    )
 
 
 # ============================================================
@@ -12187,49 +11868,6 @@ async def synchronize_commands():
     except discord.HTTPException as error:
         print(f'[SLASH] Erro ao sincronizar comandos globais: {type(error).__name__}: {error}')
 bot.setup_hook = setup_hook
-data = load_data()
-data.setdefault('panels', {})
-data.setdefault('tickets', {})
-data.setdefault('timeclock', {})
-data.setdefault('finance', {})
-data.setdefault('levels', {})
-data.setdefault('polls', {})
-data.setdefault('warnings', {})
-data.setdefault('starboard', {})
-data.setdefault('giveaways', {})
-data.setdefault('reputations', {})
-data.setdefault('security', {})
-data.setdefault('internal_logs', {'channel_id': None, 'guild_id': None})
-data.setdefault('verification', {})
-data.setdefault('fun', {})
-data.setdefault('reminders', {})
-data.setdefault('channel_snapshots', {})
-data.setdefault('server_events', {})
-data.setdefault('guild_settings', {})
-data.setdefault('bot_profile', {})
-data.setdefault('weekly_xp', {})
-data.setdefault('streaks', {})
-data.setdefault('economy_inventory', {})
-data.setdefault('transfers', [])
-data.setdefault('work_cooldowns', {})
-data.setdefault('rob_cooldowns', {})
-data['bot_profile'].setdefault('bot_status', 'online')
-data['bot_profile'].setdefault('bot_activity', None)
-data['bot_profile'].setdefault('bot_name', None)
-legacy_settings = data.pop('settings', None)
-if legacy_settings and (not data['guild_settings']):
-    data['bot_profile']['bot_status'] = legacy_settings.get('bot_status', data['bot_profile']['bot_status'])
-    data['bot_profile']['bot_activity'] = legacy_settings.get('bot_activity', data['bot_profile']['bot_activity'])
-    data['bot_profile']['bot_name'] = legacy_settings.get('bot_name', data['bot_profile']['bot_name'])
-    known_guild_ids = {str(record['guild_id']) for record in data['panels'].values() if record.get('guild_id')}
-    known_guild_ids.update(data['timeclock'])
-    known_guild_ids.update(data['finance'])
-    known_guild_ids.update(data['security'])
-    known_guild_ids.update(data['channel_snapshots'])
-    known_guild_ids.update(data['server_events'])
-    if known_guild_ids:
-        data['guild_settings'][sorted(known_guild_ids)[0]] = {'max_tickets_per_user': legacy_settings.get('max_tickets_per_user', 1), 'log_channels': legacy_settings.get('log_channels', {}), 'daily_reward': legacy_settings.get('daily_reward', 500), 'timeclock_channel_id': legacy_settings.get('timeclock_channel_id'), 'default_staff_role_id': legacy_settings.get('default_staff_role_id'), 'default_log_channel_id': legacy_settings.get('default_log_channel_id')}
-        save_data()
 token = os.getenv('DISCORD_TOKEN')
 if not token:
     raise RuntimeError('Defina a variável de ambiente DISCORD_TOKEN antes de iniciar o bot.')
