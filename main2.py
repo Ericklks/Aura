@@ -12595,6 +12595,21 @@ if __name__ == "__main__":
         raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
 # AURA: bot.run movido para o final pelo atualizador
 
+
+
+# ============================================================
+# 🚀 AURA — EXECUÇÃO FINAL
+# ============================================================
+
+if __name__ == "__main__":
+    # O host fornece DISCORD_TOKEN e qualquer outra variável já existente.
+    # O atualizador não solicita nem armazena credenciais.
+    _aura_host_token = os.getenv("DISCORD_TOKEN")
+    if not _aura_host_token:
+        # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
+        raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
+# AURA: bot.run movido para o final pelo atualizador
+
 # >>> AURA PROFESSIONAL ENGINE BEGIN >>>
 # Não editar este bloco manualmente. O atualizador o recria.
 
@@ -13182,3 +13197,3759 @@ if __name__ == "__main__":
         # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
         raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
     bot.run(_aura_host_token)
+
+
+
+# ============================================================
+# AURA EVOLUTION INFRASTRUCTURE
+# ============================================================
+
+from pathlib import Path as _AuraPath
+from datetime import datetime as _AuraDateTime
+
+_AURA_DATA_DIR = _AuraPath(__file__).resolve().parent / "aura_data"
+_AURA_DATA_DIR.mkdir(exist_ok=True)
+
+_AURA_CONFIG_FILE = _AURA_DATA_DIR / "aura_config.json"
+_AURA_STATS_FILE = _AURA_DATA_DIR / "aura_runtime_stats.json"
+
+
+def _aura_load_json(path, default=None):
+    try:
+        if not path.exists():
+            return default if default is not None else {}
+
+        with path.open("r", encoding="utf-8") as _f:
+            return json.load(_f)
+
+    except Exception:
+        return default if default is not None else {}
+
+
+def _aura_save_json(path, data):
+    try:
+        with path.open("w", encoding="utf-8") as _f:
+            json.dump(
+                data,
+                _f,
+                indent=4,
+                ensure_ascii=False
+            )
+        return True
+
+    except Exception:
+        return False
+
+
+_AURA_RUNTIME_STATS = _aura_load_json(
+    _AURA_STATS_FILE,
+    {
+        "commands_used": 0,
+        "commands": {},
+        "started_at": None
+    }
+)
+
+
+def _aura_register_command_usage(name):
+    try:
+        _AURA_RUNTIME_STATS["commands_used"] = (
+            int(_AURA_RUNTIME_STATS.get("commands_used", 0)) + 1
+        )
+
+        commands = _AURA_RUNTIME_STATS.setdefault(
+            "commands",
+            {}
+        )
+
+        commands[name] = int(commands.get(name, 0)) + 1
+
+        _aura_save_json(
+            _AURA_STATS_FILE,
+            _AURA_RUNTIME_STATS
+        )
+
+    except Exception:
+        pass
+
+
+def _aura_get_color(name="primary_color"):
+    try:
+        data = _aura_load_json(
+            _AURA_CONFIG_FILE,
+            {}
+        )
+
+        appearance = data.get(
+            "appearance",
+            {}
+        )
+
+        return int(
+            appearance.get(
+                name,
+                0x5865F2
+            )
+        )
+
+    except Exception:
+        return 0x5865F2
+
+
+def _aura_embed(
+    title,
+    description="",
+    color=None
+):
+    return discord.Embed(
+        title=title,
+        description=description,
+        color=(
+            color
+            if color is not None
+            else _aura_get_color()
+        ),
+        timestamp=_AuraDateTime.now()
+    )
+
+
+def _aura_footer(embed):
+    try:
+        data = _aura_load_json(
+            _AURA_CONFIG_FILE,
+            {}
+        )
+
+        footer = data.get(
+            "appearance",
+            {}
+        ).get(
+            "footer",
+            "AURA • Sistema de gerenciamento"
+        )
+
+        embed.set_footer(
+            text=footer
+        )
+
+    except Exception:
+        pass
+
+    return embed
+
+
+def _aura_is_admin(interaction):
+    try:
+        return bool(
+            interaction.user.guild_permissions.administrator
+            or interaction.user.guild_permissions.manage_guild
+        )
+    except Exception:
+        return False
+
+
+def _aura_has_guild(interaction):
+    return interaction.guild is not None
+
+
+def _aura_safe_name(value):
+    value = str(value)
+    value = value.replace("@", "")
+    return value[:100]
+
+
+def _aura_count_commands():
+    try:
+        total = 0
+
+        if "bot" in globals():
+
+            tree_obj = getattr(
+                bot,
+                "tree",
+                None
+            )
+
+            if tree_obj is not None:
+                total += len(
+                    getattr(
+                        tree_obj,
+                        "get_commands",
+                        lambda: []
+                    )()
+                )
+
+        return total
+
+    except Exception:
+        return 0
+
+
+
+# ============================================================
+# AURA EVOLUTION PANEL
+# ============================================================
+
+try:
+    from discord import ui as _aura_ui
+except Exception:
+    _aura_ui = None
+
+
+class AuraPanelView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    async def interaction_check(self, interaction):
+        if not _aura_is_admin(interaction):
+
+            await interaction.response.send_message(
+                "❌ Você não possui permissão para gerenciar este servidor.",
+                ephemeral=True
+            )
+
+            return False
+
+        return True
+
+    @discord.ui.button(
+        label="Visão Geral",
+        emoji="◈",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def overview(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "◈ Central Geral",
+            (
+                f"**Servidor:** {interaction.guild.name}\n"
+                f"**Membros:** {interaction.guild.member_count}\n"
+                f"**Canais:** {len(interaction.guild.channels)}\n"
+                f"**Cargos:** {len(interaction.guild.roles)}\n\n"
+                f"**Comandos registrados:** {_aura_count_commands()}"
+            )
+        )
+
+        _aura_footer(embed)
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Tickets",
+        emoji="🎫",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def tickets(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "🎫 Central de Tickets",
+            (
+                "Gerencie o sistema de atendimento.\n\n"
+                "• Painéis\n"
+                "• Categorias\n"
+                "• Canais\n"
+                "• Permissões\n"
+                "• Configurações"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Comunidade",
+        emoji="🌐",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def community(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "🌐 Central de Comunidade",
+            (
+                "Ferramentas de comunidade.\n\n"
+                "• Anúncios\n"
+                "• Embeds\n"
+                "• Boas-vindas\n"
+                "• Convites\n"
+                "• Sugestões"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Segurança",
+        emoji="🛡️",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def security(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "🛡️ Central de Segurança",
+            (
+                "Controle de proteção do servidor.\n\n"
+                "• AutoMod\n"
+                "• Anti-Link\n"
+                "• Anti-Spam\n"
+                "• Proteções\n"
+                "• Logs"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Economia",
+        emoji="💰",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def economy(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "💰 Central de Economia",
+            (
+                "Gerencie os recursos econômicos.\n\n"
+                "• Saldo\n"
+                "• Recompensas\n"
+                "• Loja\n"
+                "• Configurações"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Logs",
+        emoji="📜",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def logs(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "📜 Central de Logs",
+            (
+                "Configure o sistema de registros.\n\n"
+                "• Moderação\n"
+                "• Entradas e saídas\n"
+                "• Tickets\n"
+                "• Segurança\n"
+                "• Sistema"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Automação",
+        emoji="⚡",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def automation(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = _aura_embed(
+            "⚡ Central de Automação",
+            (
+                "Automatize eventos do servidor.\n\n"
+                "• Boas-vindas\n"
+                "• Saídas\n"
+                "• Mensagens\n"
+                "• Rotinas\n"
+                "• Tarefas automáticas"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Aparência",
+        emoji="🎨",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def appearance(
+        self,
+        interaction,
+        button
+    ):
+
+        data = _aura_load_json(
+            _AURA_CONFIG_FILE,
+            {}
+        )
+
+        appearance = data.get(
+            "appearance",
+            {}
+        )
+
+        embed = _aura_embed(
+            "🎨 Central de Aparência",
+            (
+                f"**Cor principal:** "
+                f"`{appearance.get('primary_color', 0x5865F2):06X}`\n"
+                f"**Cor de sucesso:** "
+                f"`{appearance.get('success_color', 0x57F287):06X}`\n"
+                f"**Cor de erro:** "
+                f"`{appearance.get('danger_color', 0xED4245):06X}`\n\n"
+                f"**Rodapé:** "
+                f"{appearance.get('footer', 'AURA')}"
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Diagnóstico",
+        emoji="🧪",
+        style=discord.ButtonStyle.success,
+        row=2
+    )
+    async def diagnostics(
+        self,
+        interaction,
+        button
+    ):
+
+        guild = interaction.guild
+
+        embed = _aura_embed(
+            "🧪 Diagnóstico do Sistema",
+            (
+                f"**Bot:** `{bot.user}`\n"
+                f"**ID:** `{bot.user.id}`\n"
+                f"**Latência:** `{round(bot.latency * 1000)}ms`\n"
+                f"**Guild atual:** `{guild.name}`\n"
+                f"**Comandos:** `{_aura_count_commands()}`\n"
+                f"**Canais:** `{len(guild.channels)}`\n"
+                f"**Cargos:** `{len(guild.roles)}`"
+            ),
+            _aura_get_color("success_color")
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraPanelView()
+        )
+
+    @discord.ui.button(
+        label="Fechar",
+        emoji="✖️",
+        style=discord.ButtonStyle.danger,
+        row=2
+    )
+    async def close(
+        self,
+        interaction,
+        button
+    ):
+
+        await interaction.response.edit_message(
+            content="Painel fechado.",
+            embed=None,
+            view=None
+        )
+
+
+async def _aura_open_panel(interaction):
+
+    embed = _aura_embed(
+        "◈ AURA • Central de Controle",
+        (
+            "## Sistema de gerenciamento\n\n"
+            "Utilize os controles abaixo para acessar "
+            "cada central do servidor.\n\n"
+            "🎫 **Tickets**\n"
+            "🌐 **Comunidade**\n"
+            "🛡️ **Segurança**\n"
+            "💰 **Economia**\n"
+            "📜 **Logs**\n"
+            "⚡ **Automação**\n"
+            "🎨 **Aparência**\n"
+            "🧪 **Diagnóstico**"
+        )
+    )
+
+    embed.set_thumbnail(
+        url=interaction.guild.icon.url
+        if interaction.guild.icon
+        else discord.Embed.Empty
+    )
+
+    _aura_footer(embed)
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=AuraPanelView(),
+        ephemeral=True
+    )
+
+
+
+# ============================================================
+# AURA GLOBAL ERROR HANDLER
+# ============================================================
+
+if "_aura_global_error_handler_loaded" not in globals():
+
+    _aura_global_error_handler_loaded = True
+
+    try:
+
+        @bot.tree.error
+        async def _aura_tree_error(
+            interaction,
+            error
+        ):
+
+            try:
+                original = getattr(
+                    error,
+                    "original",
+                    error
+                )
+
+                print(
+                    "[AURA ERROR]",
+                    repr(original)
+                )
+
+                message = (
+                    "❌ Ocorreu um erro ao executar este comando.\n"
+                    "O erro foi registrado pelo sistema."
+                )
+
+                if interaction.response.is_done():
+
+                    await interaction.followup.send(
+                        message,
+                        ephemeral=True
+                    )
+
+                else:
+
+                    await interaction.response.send_message(
+                        message,
+                        ephemeral=True
+                    )
+
+            except Exception as handler_error:
+
+                print(
+                    "[AURA ERROR HANDLER]",
+                    repr(handler_error)
+                )
+
+    except Exception as exc:
+
+        print(
+            "[AURA] Não foi possível registrar "
+            "o handler global:",
+            repr(exc)
+        )
+
+# ============================================================
+# AURA PRO CORE
+# ============================================================
+
+_AURA_ROOT = os.path.dirname(
+    os.path.abspath(__file__)
+)
+
+_AURA_DATA = os.path.join(
+    _AURA_ROOT,
+    "aura_data"
+)
+
+os.makedirs(
+    _AURA_DATA,
+    exist_ok=True
+)
+
+_AURA_CONFIG_PATH = os.path.join(
+    _AURA_DATA,
+    "config.json"
+)
+
+_AURA_STATS_PATH = os.path.join(
+    _AURA_DATA,
+    "stats_runtime.json"
+)
+
+
+def aura_load_config():
+
+    try:
+
+        with open(
+            _AURA_CONFIG_PATH,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(file)
+
+    except Exception:
+
+        return {
+            "appearance": {},
+            "modules": {},
+            "community": {},
+            "security": {},
+            "economy": {},
+            "tickets": {},
+            "automation": {},
+            "logs": {}
+        }
+
+
+def aura_save_config(data):
+
+    try:
+
+        temporary = (
+            _AURA_CONFIG_PATH
+            + ".tmp"
+        )
+
+        with open(
+            temporary,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                indent=4,
+                ensure_ascii=False
+            )
+
+        os.replace(
+            temporary,
+            _AURA_CONFIG_PATH
+        )
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "[AURA CONFIG ERROR]",
+            repr(error)
+        )
+
+        return False
+
+
+def aura_runtime_stats():
+
+    try:
+
+        with open(
+            _AURA_STATS_PATH,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(file)
+
+    except Exception:
+
+        return {
+            "commands_used": 0,
+            "commands": {},
+            "started_at": None
+        }
+
+
+def aura_save_runtime_stats(data):
+
+    try:
+
+        with open(
+            _AURA_STATS_PATH,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                indent=4,
+                ensure_ascii=False
+            )
+
+    except Exception:
+        pass
+
+
+def aura_track_command(name):
+
+    try:
+
+        data = aura_runtime_stats()
+
+        data["commands_used"] = (
+            int(
+                data.get(
+                    "commands_used",
+                    0
+                )
+            )
+            + 1
+        )
+
+        commands_data = data.setdefault(
+            "commands",
+            {}
+        )
+
+        commands_data[name] = (
+            int(
+                commands_data.get(
+                    name,
+                    0
+                )
+            )
+            + 1
+        )
+
+        aura_save_runtime_stats(
+            data
+        )
+
+    except Exception:
+        pass
+
+
+def aura_color(name="primary"):
+
+    try:
+
+        cfg = aura_load_config()
+
+        appearance = cfg.get(
+            "appearance",
+            {}
+        )
+
+        return int(
+            appearance.get(
+                name,
+                0x5865F2
+            )
+        )
+
+    except Exception:
+
+        return 0x5865F2
+
+
+def aura_embed(
+    title,
+    description="",
+    color=None,
+    icon=None
+):
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=(
+            color
+            if color is not None
+            else aura_color()
+        )
+    )
+
+    cfg = aura_load_config()
+
+    appearance = cfg.get(
+        "appearance",
+        {}
+    )
+
+    if appearance.get(
+        "show_timestamp",
+        True
+    ):
+        embed.timestamp = datetime.now()
+
+    if icon:
+        try:
+            embed.set_thumbnail(
+                url=icon
+            )
+        except Exception:
+            pass
+
+    if appearance.get(
+        "show_footer",
+        True
+    ):
+        embed.set_footer(
+            text=appearance.get(
+                "footer",
+                "AURA PRO • Sistema de gerenciamento"
+            )
+        )
+
+    return embed
+
+
+def aura_success(
+    title,
+    description=""
+):
+
+    return aura_embed(
+        title,
+        description,
+        aura_color("success")
+    )
+
+
+def aura_error(
+    title,
+    description=""
+):
+
+    return aura_embed(
+        title,
+        description,
+        aura_color("danger")
+    )
+
+
+def aura_warning(
+    title,
+    description=""
+):
+
+    return aura_embed(
+        title,
+        description,
+        aura_color("warning")
+    )
+
+
+def aura_info(
+    title,
+    description=""
+):
+
+    return aura_embed(
+        title,
+        description,
+        aura_color("info")
+    )
+
+
+def aura_is_manager(interaction):
+
+    try:
+
+        permissions = (
+            interaction.user.guild_permissions
+        )
+
+        return bool(
+            permissions.administrator
+            or permissions.manage_guild
+        )
+
+    except Exception:
+
+        return False
+
+
+def aura_commands_count():
+
+    try:
+
+        tree_object = getattr(
+            bot,
+            "tree",
+            None
+        )
+
+        if tree_object is None:
+            return 0
+
+        return len(
+            tree_object.get_commands()
+        )
+
+    except Exception:
+
+        return 0
+
+
+def aura_guild_icon(guild):
+
+    try:
+
+        if guild.icon:
+            return guild.icon.url
+
+    except Exception:
+        pass
+
+    return None
+
+
+def aura_human_number(value):
+
+    try:
+
+        return f"{int(value):,}".replace(
+            ",",
+            "."
+        )
+
+    except Exception:
+
+        return str(value)
+
+# ============================================================
+# AURA PRO INTERACTIVE UI
+# ============================================================
+
+
+class AuraBackButton(discord.ui.Button):
+
+    def __init__(self):
+
+        super().__init__(
+            label="Voltar",
+            emoji="↩️",
+            style=discord.ButtonStyle.secondary,
+            row=4
+        )
+
+    async def callback(self, interaction):
+
+        await aura_open_main_panel(
+            interaction,
+            edit=True
+        )
+
+
+class AuraCloseButton(discord.ui.Button):
+
+    def __init__(self):
+
+        super().__init__(
+            label="Fechar",
+            emoji="✖️",
+            style=discord.ButtonStyle.danger,
+            row=4
+        )
+
+    async def callback(self, interaction):
+
+        try:
+
+            await interaction.response.edit_message(
+                content="",
+                embed=None,
+                view=None
+            )
+
+        except Exception:
+
+            try:
+
+                await interaction.response.send_message(
+                    "Painel fechado.",
+                    ephemeral=True
+                )
+
+            except Exception:
+                pass
+
+
+class AuraMainPanel(discord.ui.View):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=600
+        )
+
+    async def interaction_check(
+        self,
+        interaction
+    ):
+
+        if not aura_is_manager(
+            interaction
+        ):
+
+            await interaction.response.send_message(
+                embed=aura_error(
+                    "Acesso negado",
+                    "Você precisa possuir **Administrador** "
+                    "ou **Gerenciar Servidor**."
+                ),
+                ephemeral=True
+            )
+
+            return False
+
+        return True
+
+    @discord.ui.button(
+        label="Visão Geral",
+        emoji="◈",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def overview(
+        self,
+        interaction,
+        button
+    ):
+
+        guild = interaction.guild
+
+        embed = aura_embed(
+            "◈ AURA • Visão Geral",
+            (
+                f"## {guild.name}\n\n"
+                f"👥 **Membros**\n"
+                f"`{aura_human_number(guild.member_count or 0)}`\n\n"
+                f"💬 **Canais**\n"
+                f"`{len(guild.channels)}`\n\n"
+                f"🏷️ **Cargos**\n"
+                f"`{len(guild.roles)}`\n\n"
+                f"⚡ **Comandos**\n"
+                f"`{aura_commands_count()}`\n\n"
+                f"📡 **Latência**\n"
+                f"`{round(bot.latency * 1000)}ms`"
+            ),
+            icon=aura_guild_icon(guild)
+        )
+
+        view = AuraOverviewView()
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=view
+        )
+
+    @discord.ui.button(
+        label="Tickets",
+        emoji="🎫",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def tickets(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "tickets"
+        )
+
+    @discord.ui.button(
+        label="Comunidade",
+        emoji="🌐",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def community(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "community"
+        )
+
+    @discord.ui.button(
+        label="Segurança",
+        emoji="🛡️",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def security(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "security"
+        )
+
+    @discord.ui.button(
+        label="Economia",
+        emoji="💰",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def economy(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "economy"
+        )
+
+    @discord.ui.button(
+        label="Logs",
+        emoji="📜",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def logs(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "logs"
+        )
+
+    @discord.ui.button(
+        label="Automação",
+        emoji="⚡",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def automation(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "automation"
+        )
+
+    @discord.ui.button(
+        label="Aparência",
+        emoji="🎨",
+        style=discord.ButtonStyle.secondary,
+        row=2
+    )
+    async def appearance(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "appearance"
+        )
+
+    @discord.ui.button(
+        label="Diagnóstico",
+        emoji="🧪",
+        style=discord.ButtonStyle.success,
+        row=2
+    )
+    async def diagnostic(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_module(
+            interaction,
+            "diagnostics"
+        )
+
+    @discord.ui.button(
+        label="Atualizar",
+        emoji="🔄",
+        style=discord.ButtonStyle.primary,
+        row=3
+    )
+    async def refresh(
+        self,
+        interaction,
+        button
+    ):
+
+        await aura_open_main_panel(
+            interaction,
+            edit=True
+        )
+
+    @discord.ui.button(
+        label="Fechar",
+        emoji="✖️",
+        style=discord.ButtonStyle.danger,
+        row=3
+    )
+    async def close(
+        self,
+        interaction,
+        button
+    ):
+
+        await interaction.response.edit_message(
+            content="",
+            embed=None,
+            view=None
+        )
+
+
+class AuraOverviewView(discord.ui.View):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=600
+        )
+
+        self.add_item(
+            AuraBackButton()
+        )
+
+        self.add_item(
+            AuraCloseButton()
+        )
+
+
+async def aura_open_main_panel(
+    interaction,
+    edit=False
+):
+
+    guild = interaction.guild
+
+    cfg = aura_load_config()
+
+    modules = cfg.get(
+        "modules",
+        {}
+    )
+
+    active = sum(
+        1
+        for value in modules.values()
+        if value
+    )
+
+    total = len(modules)
+
+    embed = aura_embed(
+        "✦ AURA PRO • Central de Controle",
+        (
+            f"## {guild.name}\n\n"
+            "Gerencie os principais sistemas do servidor "
+            "através de uma única interface.\n\n"
+            "### Módulos\n"
+            f"🟢 **{active}/{total}** módulos ativos\n\n"
+            "Use os botões abaixo para acessar "
+            "as centrais."
+        ),
+        icon=aura_guild_icon(guild)
+    )
+
+    if edit:
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=AuraMainPanel()
+        )
+
+    else:
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=AuraMainPanel(),
+            ephemeral=True
+        )
+
+
+async def aura_open_module(
+    interaction,
+    module
+):
+
+    cfg = aura_load_config()
+
+    descriptions = {
+
+        "tickets": (
+            "🎫 **Tickets**\n\n"
+            "Gerencie painéis, categorias, permissões, "
+            "logs e configurações do atendimento."
+        ),
+
+        "community": (
+            "🌐 **Comunidade**\n\n"
+            "Anúncios, embeds, sugestões, boas-vindas, "
+            "convites e ferramentas sociais."
+        ),
+
+        "security": (
+            "🛡️ **Segurança**\n\n"
+            "AutoMod, Anti-Spam, Anti-Link, "
+            "proteções e registros."
+        ),
+
+        "economy": (
+            "💰 **Economia**\n\n"
+            "Saldo, recompensas, loja, ranking "
+            "e configurações econômicas."
+        ),
+
+        "logs": (
+            "📜 **Logs**\n\n"
+            "Central de auditoria e eventos."
+        ),
+
+        "automation": (
+            "⚡ **Automação**\n\n"
+            "Boas-vindas, saídas, tarefas e rotinas."
+        ),
+
+        "appearance": (
+            "🎨 **Aparência**\n\n"
+            "Cores, rodapé e identidade visual."
+        ),
+
+        "diagnostics": (
+            "🧪 **Diagnóstico**\n\n"
+            "Verifique o estado interno dos sistemas."
+        ),
+    }
+
+    enabled = cfg.get(
+        "modules",
+        {}
+    ).get(
+        module,
+        True
+    )
+
+    state = (
+        "🟢 ATIVO"
+        if enabled
+        else "🔴 DESATIVADO"
+    )
+
+    description = (
+        descriptions.get(
+            module,
+            "Módulo AURA."
+        )
+        + f"\n\n**Estado:** {state}"
+    )
+
+    embed = aura_embed(
+        f"AURA PRO • {module.upper()}",
+        description
+    )
+
+    view = AuraModuleView(
+        module
+    )
+
+    await interaction.response.edit_message(
+        embed=embed,
+        view=view
+    )
+
+
+class AuraModuleView(discord.ui.View):
+
+    def __init__(self, module):
+
+        super().__init__(
+            timeout=600
+        )
+
+        self.module = module
+
+        self.add_item(
+            AuraBackButton()
+        )
+
+        self.add_item(
+            AuraCloseButton()
+        )
+
+# ============================================================
+# AURA PRO GLOBAL ERROR SYSTEM
+# ============================================================
+
+if not globals().get(
+    "_AURA_ERROR_HANDLER_INSTALLED",
+    False
+):
+
+    _AURA_ERROR_HANDLER_INSTALLED = True
+
+    try:
+
+        @bot.tree.error
+        async def _aura_global_tree_error(
+            interaction,
+            error
+        ):
+
+            original_error = getattr(
+                error,
+                "original",
+                error
+            )
+
+            print(
+                "\n[AURA ERROR]"
+            )
+
+            traceback.print_exc()
+
+            embed = aura_error(
+                "Não foi possível executar",
+                (
+                    "O AURA encontrou um erro durante "
+                    "a execução deste comando.\n\n"
+                    "O erro foi registrado no console."
+                )
+            )
+
+            try:
+
+                if interaction.response.is_done():
+
+                    await interaction.followup.send(
+                        embed=embed,
+                        ephemeral=True
+                    )
+
+                else:
+
+                    await interaction.response.send_message(
+                        embed=embed,
+                        ephemeral=True
+                    )
+
+            except Exception:
+
+                pass
+
+    except Exception as error:
+
+        print(
+            "[AURA] Falha ao instalar "
+            "tratamento global:",
+            repr(error)
+        )
+
+
+# ============================================================
+# AURA VIP SYSTEM START
+# ============================================================
+
+import asyncio
+import json
+import os
+import time
+from datetime import datetime, timezone, timedelta
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+
+# ============================================================
+# AURA VIP STORAGE
+# ============================================================
+
+AURA_VIP_DATA = os.path.join(
+    os.path.dirname(__file__),
+    "aura_data"
+)
+
+AURA_VIP_CONFIG = os.path.join(
+    AURA_VIP_DATA,
+    "vip_config.json"
+)
+
+AURA_VIP_STATS = os.path.join(
+    AURA_VIP_DATA,
+    "vip_stats.json"
+)
+
+AURA_VIP_TICKETS = os.path.join(
+    AURA_VIP_DATA,
+    "vip_tickets.json"
+)
+
+AURA_VIP_PONTO = os.path.join(
+    AURA_VIP_DATA,
+    "vip_ponto.json"
+)
+
+AURA_VIP_INCIDENTS = os.path.join(
+    AURA_VIP_DATA,
+    "vip_incidents.json"
+)
+
+AURA_VIP_ACHIEVEMENTS = os.path.join(
+    AURA_VIP_DATA,
+    "vip_achievements.json"
+)
+
+
+def aura_vip_load(path, default):
+
+    try:
+        if not os.path.exists(path):
+            return default
+
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+
+    except Exception:
+        return default
+
+
+def aura_vip_save(path, data):
+
+    os.makedirs(
+        os.path.dirname(path),
+        exist_ok=True
+    )
+
+    temp = path + ".tmp"
+
+    with open(temp, "w", encoding="utf-8") as file:
+        json.dump(
+            data,
+            file,
+            ensure_ascii=False,
+            indent=4
+        )
+
+    os.replace(temp, path)
+
+
+def aura_vip_config():
+
+    return aura_vip_load(
+        AURA_VIP_CONFIG,
+        {}
+    )
+
+
+# ============================================================
+# VIP BRANDING
+# ============================================================
+
+def aura_vip_brand():
+
+    config = aura_vip_config()
+
+    return config.get(
+        "branding",
+        {
+            "name": "AURA VIP",
+            "emoji": "✦",
+            "primary_color": 0x8B5CF6,
+            "success_color": 0x22C55E,
+            "warning_color": 0xF59E0B,
+            "error_color": 0xEF4444,
+            "ticket_color": 0x6366F1,
+            "footer": "AURA VIP"
+        }
+    )
+
+
+def aura_vip_embed(
+    title,
+    description=None,
+    color=None,
+    interaction=None
+):
+
+    brand = aura_vip_brand()
+
+    if color is None:
+        color = brand.get(
+            "primary_color",
+            0x8B5CF6
+        )
+
+    embed = discord.Embed(
+        title=f"{brand.get('emoji', '✦')}  {title}",
+        description=description or "",
+        color=color,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    if interaction and interaction.guild:
+
+        if interaction.guild.icon:
+            embed.set_thumbnail(
+                url=interaction.guild.icon.url
+            )
+
+    embed.set_footer(
+        text=brand.get(
+            "footer",
+            "AURA VIP"
+        )
+    )
+
+    return embed
+
+
+# ============================================================
+# UTILITÁRIOS
+# ============================================================
+
+def aura_vip_user_name(user):
+
+    return getattr(
+        user,
+        "display_name",
+        getattr(user, "name", "Usuário")
+    )
+
+
+def aura_vip_minutes(seconds):
+
+    if seconds <= 0:
+        return 0
+
+    return int(seconds // 60)
+
+
+def aura_vip_human_seconds(seconds):
+
+    seconds = max(0, int(seconds))
+
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    if hours:
+        return f"{hours}h {minutes}m"
+
+    if minutes:
+        return f"{minutes}m {secs}s"
+
+    return f"{secs}s"
+
+
+def aura_vip_now():
+
+    return datetime.now(timezone.utc)
+
+
+def aura_vip_iso():
+
+    return aura_vip_now().isoformat()
+
+
+def aura_vip_parse_iso(value):
+
+    try:
+        return datetime.fromisoformat(value)
+
+    except Exception:
+        return aura_vip_now()
+
+
+def aura_vip_manager(interaction):
+
+    if not interaction.guild:
+        return False
+
+    permissions = interaction.user.guild_permissions
+
+    return (
+        permissions.administrator
+        or permissions.manage_guild
+        or permissions.manage_channels
+    )
+
+
+async def aura_vip_respond(
+    interaction,
+    *,
+    embed=None,
+    content=None,
+    ephemeral=True,
+    view=None
+):
+
+    if interaction.response.is_done():
+
+        await interaction.followup.send(
+            content=content,
+            embed=embed,
+            ephemeral=ephemeral,
+            view=view
+        )
+
+    else:
+
+        await interaction.response.send_message(
+            content=content,
+            embed=embed,
+            ephemeral=ephemeral,
+            view=view
+        )
+
+
+# ============================================================
+# ESTATÍSTICAS
+# ============================================================
+
+def aura_vip_stats(guild_id):
+
+    data = aura_vip_load(
+        AURA_VIP_STATS,
+        {}
+    )
+
+    gid = str(guild_id)
+
+    if gid not in data:
+
+        data[gid] = {
+            "messages": 0,
+            "commands": 0,
+            "joins": 0,
+            "leaves": 0,
+            "tickets": 0,
+            "tickets_closed": 0,
+            "moderation": 0,
+            "points": 0
+        }
+
+        aura_vip_save(
+            AURA_VIP_STATS,
+            data
+        )
+
+    return data[gid]
+
+
+def aura_vip_increment(
+    guild_id,
+    key,
+    amount=1
+):
+
+    data = aura_vip_load(
+        AURA_VIP_STATS,
+        {}
+    )
+
+    gid = str(guild_id)
+
+    if gid not in data:
+        data[gid] = {}
+
+    data[gid][key] = (
+        data[gid].get(key, 0) + amount
+    )
+
+    aura_vip_save(
+        AURA_VIP_STATS,
+        data
+    )
+
+
+# ============================================================
+# TICKETS VIP
+# ============================================================
+
+VIP_TICKET_TYPES = {
+    "suporte": {
+        "name": "Suporte",
+        "emoji": "🛠️",
+        "description": "Preciso de ajuda com o servidor."
+    },
+
+    "financeiro": {
+        "name": "Financeiro",
+        "emoji": "💳",
+        "description": "Assuntos financeiros e pagamentos."
+    },
+
+    "denuncia": {
+        "name": "Denúncia",
+        "emoji": "🚨",
+        "description": "Denunciar um usuário ou situação."
+    },
+
+    "parceria": {
+        "name": "Parceria",
+        "emoji": "🤝",
+        "description": "Solicitar ou tratar uma parceria."
+    },
+
+    "vip": {
+        "name": "VIP",
+        "emoji": "👑",
+        "description": "Atendimento exclusivo VIP."
+    }
+}
+
+
+def aura_vip_ticket_data():
+
+    return aura_vip_load(
+        AURA_VIP_TICKETS,
+        {}
+    )
+
+
+def aura_vip_ticket_save(data):
+
+    aura_vip_save(
+        AURA_VIP_TICKETS,
+        data
+    )
+
+
+class AuraVIPTicketSelect(
+    discord.ui.Select
+):
+
+    def __init__(self):
+
+        options = []
+
+        for key, value in VIP_TICKET_TYPES.items():
+
+            options.append(
+                discord.SelectOption(
+                    label=value["name"],
+                    description=value["description"][:100],
+                    emoji=value["emoji"],
+                    value=key
+                )
+            )
+
+        super().__init__(
+            placeholder="Selecione o tipo de atendimento...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="aura_vip_ticket_select"
+        )
+
+    async def callback(self, interaction):
+
+        ticket_type = self.values[0]
+
+        await aura_vip_create_ticket(
+            interaction,
+            ticket_type
+        )
+
+
+class AuraVIPTicketView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+        self.add_item(
+            AuraVIPTicketSelect()
+        )
+
+
+async def aura_vip_create_ticket(
+    interaction,
+    ticket_type
+):
+
+    guild = interaction.guild
+
+    if not guild:
+        return
+
+    data = aura_vip_ticket_data()
+
+    guild_data = data.setdefault(
+        str(guild.id),
+        {}
+    )
+
+    user_key = str(interaction.user.id)
+
+    for channel_id, ticket in guild_data.items():
+
+        if (
+            ticket.get("owner_id")
+            == interaction.user.id
+            and ticket.get("status")
+            == "open"
+        ):
+
+            channel = guild.get_channel(
+                int(channel_id)
+            )
+
+            if channel:
+
+                embed = aura_vip_embed(
+                    "Atendimento já existente",
+                    (
+                        "Você já possui um ticket aberto.\n\n"
+                        f"🎫 **Ticket:** {channel.mention}\n"
+                        "Você pode continuar seu atendimento por lá."
+                    ),
+                    0xF59E0B,
+                    interaction
+                )
+
+                await aura_vip_respond(
+                    interaction,
+                    embed=embed
+                )
+
+                return
+
+    config = aura_vip_config().get(
+        "tickets",
+        {}
+    )
+
+    category = None
+
+    category_id = config.get(
+        "category_id"
+    )
+
+    if category_id:
+
+        category = guild.get_channel(
+            int(category_id)
+        )
+
+    if category is None:
+
+        category = discord.utils.get(
+            guild.categories,
+            name="🎫・ATENDIMENTOS"
+        )
+
+    overwrites = {
+
+        guild.default_role:
+            discord.PermissionOverwrite(
+                view_channel=False
+            ),
+
+        interaction.user:
+            discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True
+            )
+    }
+
+    support_role_id = config.get(
+        "support_role_id"
+    )
+
+    support_role = None
+
+    if support_role_id:
+
+        support_role = guild.get_role(
+            int(support_role_id)
+        )
+
+    if support_role:
+
+        overwrites[support_role] = (
+            discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True
+            )
+        )
+
+    type_data = VIP_TICKET_TYPES[
+        ticket_type
+    ]
+
+    safe_name = (
+        f"ticket-{interaction.user.name}"
+        .lower()
+        .replace(" ", "-")
+    )
+
+    safe_name = "".join(
+        char
+        for char in safe_name
+        if char.isalnum() or char == "-"
+    )[:90]
+
+    channel = await guild.create_text_channel(
+        name=safe_name,
+        category=category,
+        overwrites=overwrites,
+        reason="AURA VIP Ticket"
+    )
+
+    opened_at = aura_vip_iso()
+
+    guild_data[str(channel.id)] = {
+
+        "owner_id": interaction.user.id,
+        "owner_name": aura_vip_user_name(
+            interaction.user
+        ),
+
+        "type": ticket_type,
+
+        "status": "open",
+
+        "priority": "normal",
+
+        "assigned_to": None,
+
+        "opened_at": opened_at,
+
+        "claimed_at": None,
+
+        "closed_at": None,
+
+        "sla_minutes":
+            config.get(
+                "sla_minutes",
+                30
+            )
+    }
+
+    aura_vip_ticket_save(data)
+
+    aura_vip_increment(
+        guild.id,
+        "tickets"
+    )
+
+    embed = aura_vip_embed(
+        "ATENDIMENTO VIP",
+        (
+            "╭────────────────────────────╮\n"
+            "│  ✦ **CENTRAL DE ATENDIMENTO**\n"
+            "╰────────────────────────────╯\n\n"
+
+            f"🎫 **Categoria:** {type_data['emoji']} "
+            f"{type_data['name']}\n"
+
+            f"👤 **Cliente:** {interaction.user.mention}\n"
+
+            "🟢 **Status:** `ABERTO`\n"
+
+            "🟡 **Prioridade:** `NORMAL`\n"
+
+            f"⏱️ **SLA:** "
+            f"`{config.get('sla_minutes', 30)} minutos`\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+
+            "📌 **Como funciona**\n"
+            "Nossa equipe será notificada e poderá assumir "
+            "este atendimento.\n\n"
+
+            "💡 Explique seu problema com o máximo de detalhes.\n"
+            "📎 Você pode enviar imagens e arquivos.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+
+            "🔐 **Central VIP protegida**"
+        ),
+        aura_vip_brand().get(
+            "ticket_color",
+            0x6366F1
+        ),
+        interaction
+    )
+
+    embed.add_field(
+        name="📅 Aberto em",
+        value=f"<t:{int(time.time())}:F>",
+        inline=True
+    )
+
+    embed.add_field(
+        name="⏳ SLA",
+        value=f"<t:{int(time.time()) + config.get('sla_minutes', 30) * 60}:R>",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🆔 ID",
+        value=f"`{channel.id}`",
+        inline=True
+    )
+
+    view = AuraVIPTicketControls()
+
+    await channel.send(
+        content=(
+            interaction.user.mention
+            + (
+                f" {support_role.mention}"
+                if support_role
+                else ""
+            )
+        ),
+        embed=embed,
+        view=view
+    )
+
+    await aura_vip_respond(
+        interaction,
+        embed=aura_vip_embed(
+            "Ticket criado",
+            (
+                f"Seu atendimento foi criado em "
+                f"{channel.mention}.\n\n"
+                "A equipe poderá assumir o atendimento "
+                "através do painel."
+            ),
+            0x22C55E,
+            interaction
+        )
+    )
+
+
+class AuraVIPTicketControls(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="Assumir",
+        emoji="👤",
+        style=discord.ButtonStyle.primary,
+        custom_id="aura_vip_ticket_claim"
+    )
+    async def claim(
+        self,
+        interaction,
+        button
+    ):
+
+        if not aura_vip_manager(interaction):
+
+            await aura_vip_respond(
+                interaction,
+                embed=aura_vip_embed(
+                    "Acesso negado",
+                    "Você não possui permissão para assumir tickets.",
+                    0xEF4444,
+                    interaction
+                )
+            )
+
+            return
+
+        data = aura_vip_ticket_data()
+        guild_data = data.get(
+            str(interaction.guild.id),
+            {}
+        )
+
+        ticket = guild_data.get(
+            str(interaction.channel.id)
+        )
+
+        if not ticket:
+
+            return
+
+        ticket["assigned_to"] = (
+            interaction.user.id
+        )
+
+        ticket["claimed_at"] = aura_vip_iso()
+
+        ticket["status"] = "claimed"
+
+        aura_vip_ticket_save(data)
+
+        await interaction.channel.send(
+            embed=aura_vip_embed(
+                "Atendimento assumido",
+                (
+                    f"👤 {interaction.user.mention} "
+                    "assumiu este atendimento.\n\n"
+                    "🟢 O ticket agora está sendo atendido."
+                ),
+                0x22C55E,
+                interaction
+            )
+        )
+
+        await aura_vip_respond(
+            interaction,
+            content="Atendimento assumido.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Prioridade",
+        emoji="🔥",
+        style=discord.ButtonStyle.secondary,
+        custom_id="aura_vip_ticket_priority"
+    )
+    async def priority(
+        self,
+        interaction,
+        button
+    ):
+
+        if not aura_vip_manager(interaction):
+
+            await aura_vip_respond(
+                interaction,
+                content="Sem permissão.",
+                ephemeral=True
+            )
+
+            return
+
+        data = aura_vip_ticket_data()
+
+        ticket = data.get(
+            str(interaction.guild.id),
+            {}
+        ).get(
+            str(interaction.channel.id)
+        )
+
+        if not ticket:
+            return
+
+        levels = [
+            "normal",
+            "alta",
+            "urgente",
+            "critica"
+        ]
+
+        current = ticket.get(
+            "priority",
+            "normal"
+        )
+
+        index = levels.index(current)
+
+        next_level = levels[
+            (index + 1) % len(levels)
+        ]
+
+        ticket["priority"] = next_level
+
+        aura_vip_ticket_save(data)
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "Prioridade atualizada",
+                (
+                    f"🔥 Nova prioridade: "
+                    f"`{next_level.upper()}`"
+                ),
+                0xF59E0B,
+                interaction
+            )
+        )
+
+    @discord.ui.button(
+        label="Fechar",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger,
+        custom_id="aura_vip_ticket_close"
+    )
+    async def close(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ticket_data()
+
+        guild_data = data.get(
+            str(interaction.guild.id),
+            {}
+        )
+
+        ticket = guild_data.get(
+            str(interaction.channel.id)
+        )
+
+        if not ticket:
+            return
+
+        if (
+            interaction.user.id
+            != ticket.get("owner_id")
+            and not aura_vip_manager(interaction)
+        ):
+
+            await aura_vip_respond(
+                interaction,
+                content="Você não pode fechar este ticket.",
+                ephemeral=True
+            )
+
+            return
+
+        ticket["status"] = "closed"
+
+        ticket["closed_at"] = aura_vip_iso()
+
+        aura_vip_ticket_save(data)
+
+        aura_vip_increment(
+            interaction.guild.id,
+            "tickets_closed"
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "Ticket encerrado",
+                (
+                    "🔒 Este atendimento foi encerrado.\n\n"
+                    "O canal será arquivado pela equipe."
+                ),
+                0xEF4444,
+                interaction
+            )
+        )
+
+        await interaction.channel.edit(
+            name=(
+                "closed-"
+                + interaction.channel.name
+            )[:100]
+        )
+
+
+# ============================================================
+# PAINEL DE TICKETS
+# ============================================================
+
+class AuraVIPTicketPanelView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+        self.add_item(
+            AuraVIPTicketSelect()
+        )
+
+
+def aura_vip_ticket_panel_embed(guild):
+
+    embed = aura_vip_embed(
+        "CENTRAL DE ATENDIMENTO",
+        (
+            "╭──────────────────────────────╮\n"
+            "│       ✦ **AURA VIP TICKETS**\n"
+            "╰──────────────────────────────╯\n\n"
+
+            "Escolha abaixo o departamento que melhor "
+            "descreve o seu atendimento.\n\n"
+
+            "🛠️ **Suporte**\n"
+            "Ajuda geral e suporte técnico.\n\n"
+
+            "💳 **Financeiro**\n"
+            "Pagamentos, compras e assuntos financeiros.\n\n"
+
+            "🚨 **Denúncia**\n"
+            "Envie uma denúncia para a equipe responsável.\n\n"
+
+            "🤝 **Parceria**\n"
+            "Solicitações e propostas de parceria.\n\n"
+
+            "👑 **VIP**\n"
+            "Atendimento prioritário e exclusivo.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+
+            "🔐 Seus tickets são privados.\n"
+            "⏱️ O atendimento possui SLA.\n"
+            "📊 Todos os dados são contabilizados.\n"
+            "⭐ O atendimento pode receber avaliação.\n\n"
+
+            "**Selecione uma opção abaixo para começar.**"
+        ),
+        aura_vip_brand().get(
+            "ticket_color",
+            0x6366F1
+        )
+    )
+
+    embed.add_field(
+        name="🟢 Sistema",
+        value="`ONLINE`",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🛡️ Privacidade",
+        value="`ATIVA`",
+        inline=True
+    )
+
+    embed.add_field(
+        name="⚡ SLA",
+        value="`VIP`",
+        inline=True
+    )
+
+    if guild.icon:
+        embed.set_thumbnail(
+            url=guild.icon.url
+        )
+
+    return embed
+
+
+# ============================================================
+# SISTEMA DE PONTO VIP
+# ============================================================
+
+def aura_vip_ponto_data():
+
+    return aura_vip_load(
+        AURA_VIP_PONTO,
+        {}
+    )
+
+
+def aura_vip_ponto_save(data):
+
+    aura_vip_save(
+        AURA_VIP_PONTO,
+        data
+    )
+
+
+def aura_vip_expected_datetime():
+
+    config = aura_vip_config().get(
+        "ponto",
+        {}
+    )
+
+    expected = config.get(
+        "expected_time",
+        "08:00"
+    )
+
+    hour, minute = map(
+        int,
+        expected.split(":")
+    )
+
+    now = aura_vip_now()
+
+    return now.replace(
+        hour=hour,
+        minute=minute,
+        second=0,
+        microsecond=0
+    )
+
+
+def aura_vip_register_presence(
+    guild_id,
+    user_id
+):
+
+    data = aura_vip_ponto_data()
+
+    guild = data.setdefault(
+        str(guild_id),
+        {}
+    )
+
+    user = guild.setdefault(
+        str(user_id),
+        {
+            "total_points": 0,
+            "total_late_minutes": 0,
+            "total_work_seconds": 0,
+            "total_pause_seconds": 0,
+            "presences": 0,
+            "on_time": 0,
+            "late_count": 0,
+            "history": []
+        }
+    )
+
+    now = aura_vip_now()
+
+    expected = aura_vip_expected_datetime()
+
+    delay_seconds = max(
+        0,
+        int(
+            (now - expected).total_seconds()
+        )
+    )
+
+    config = aura_vip_config().get(
+        "ponto",
+        {}
+    )
+
+    grace = int(
+        config.get(
+            "grace_minutes",
+            0
+        )
+    )
+
+    effective_delay = max(
+        0,
+        delay_seconds
+        - grace * 60
+    )
+
+    delay_minutes = (
+        effective_delay // 60
+    )
+
+    base_points = int(
+        config.get(
+            "points_on_presence",
+            10
+        )
+    )
+
+    punctuality_points = 0
+
+    if delay_minutes == 0:
+
+        punctuality_points = int(
+            config.get(
+                "points_per_ontime",
+                5
+            )
+        )
+
+        user["on_time"] += 1
+
+    else:
+
+        user["late_count"] += 1
+
+        user["total_late_minutes"] += (
+            delay_minutes
+        )
+
+    points = base_points + punctuality_points
+
+    # Não deixa atraso gerar pontos negativos.
+    late_penalty = (
+        delay_minutes
+        * int(
+            config.get(
+                "points_per_late_minute",
+                1
+            )
+        )
+    )
+
+    points = max(
+        0,
+        points - late_penalty
+    )
+
+    user["total_points"] += points
+
+    user["presences"] += 1
+
+    user["history"].append(
+        {
+            "type": "presence",
+            "timestamp": aura_vip_iso(),
+            "expected": expected.isoformat(),
+            "delay_minutes": delay_minutes,
+            "points": points
+        }
+    )
+
+    user["history"] = user[
+        "history"
+    ][-100:]
+
+    aura_vip_ponto_save(data)
+
+    return {
+        "delay_minutes": delay_minutes,
+        "points": points,
+        "on_time": delay_minutes == 0
+    }
+
+
+# ============================================================
+# VIEW DO PONTO
+# ============================================================
+
+class AuraVIPPontoView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="Confirmar presença",
+        emoji="🟢",
+        style=discord.ButtonStyle.success,
+        custom_id="aura_vip_presence"
+    )
+    async def presence(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        guild = data.setdefault(
+            str(interaction.guild.id),
+            {}
+        )
+
+        user_id = str(
+            interaction.user.id
+        )
+
+        current = guild.get(
+            user_id
+        )
+
+        if current and current.get(
+            "active"
+        ):
+
+            await aura_vip_respond(
+                interaction,
+                embed=aura_vip_embed(
+                    "Presença já confirmada",
+                    (
+                        "Sua jornada atual já está ativa.\n\n"
+                        "Use **Pausar** quando precisar interromper "
+                        "temporariamente sua atividade."
+                    ),
+                    0xF59E0B,
+                    interaction
+                )
+            )
+
+            return
+
+        result = aura_vip_register_presence(
+            interaction.guild.id,
+            interaction.user.id
+        )
+
+        user = guild.setdefault(
+            user_id,
+            {}
+        )
+
+        user["active"] = True
+        user["started_at"] = aura_vip_iso()
+        user["paused"] = False
+        user["paused_at"] = None
+        user["current_pause_seconds"] = 0
+
+        aura_vip_ponto_save(data)
+
+        if result["on_time"]:
+
+            status = "🟢 PONTUAL"
+
+            message = (
+                "Presença confirmada dentro do horário."
+            )
+
+        else:
+
+            status = "🟠 ATRASADO"
+
+            message = (
+                f"Você confirmou presença com "
+                f"**{result['delay_minutes']} minutos de atraso**."
+            )
+
+        embed = aura_vip_embed(
+            "PRESENÇA CONFIRMADA",
+            (
+                f"{message}\n\n"
+                f"📊 **Status:** {status}\n"
+                f"⭐ **Pontos recebidos:** `+{result['points']}`\n"
+                f"🕐 **Início:** <t:{int(time.time())}:T>\n\n"
+                "⏸️ Quando precisar interromper sua atividade, "
+                "utilize o botão **PAUSAR**."
+            ),
+            0x22C55E,
+            interaction
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed
+        )
+
+        await interaction.message.edit(
+            view=AuraVIPPontoActiveView()
+        )
+
+    @discord.ui.button(
+        label="Meu histórico",
+        emoji="📊",
+        style=discord.ButtonStyle.secondary,
+        custom_id="aura_vip_history"
+    )
+    async def history(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        user = data.get(
+            str(interaction.guild.id),
+            {}
+        ).get(
+            str(interaction.user.id),
+            {}
+        )
+
+        embed = aura_vip_embed(
+            "MEU DESEMPENHO",
+            (
+                f"👤 **Usuário:** {interaction.user.mention}\n\n"
+                f"⭐ **Pontos:** `{user.get('total_points', 0)}`\n"
+                f"🟢 **Presenças:** `{user.get('presences', 0)}`\n"
+                f"🟢 **Pontuais:** `{user.get('on_time', 0)}`\n"
+                f"🟠 **Atrasos:** `{user.get('late_count', 0)}`\n"
+                f"⏰ **Minutos de atraso:** "
+                f"`{user.get('total_late_minutes', 0)}`\n"
+                f"💼 **Tempo trabalhado:** "
+                f"`{aura_vip_human_seconds(user.get('total_work_seconds', 0))}`\n"
+                f"⏸️ **Tempo pausado:** "
+                f"`{aura_vip_human_seconds(user.get('total_pause_seconds', 0))}`"
+            ),
+            0x6366F1,
+            interaction
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed
+        )
+
+
+class AuraVIPPontoActiveView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="PAUSAR",
+        emoji="⏸️",
+        style=discord.ButtonStyle.primary,
+        custom_id="aura_vip_pause"
+    )
+    async def pause(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        guild = data.get(
+            str(interaction.guild.id),
+            {}
+        )
+
+        user = guild.get(
+            str(interaction.user.id)
+        )
+
+        if not user or not user.get(
+            "active"
+        ):
+
+            await aura_vip_respond(
+                interaction,
+                content="Você não possui uma jornada ativa.",
+                ephemeral=True
+            )
+
+            return
+
+        if user.get("paused"):
+
+            await aura_vip_respond(
+                interaction,
+                content="Sua jornada já está pausada.",
+                ephemeral=True
+            )
+
+            return
+
+        user["paused"] = True
+        user["paused_at"] = aura_vip_iso()
+
+        aura_vip_ponto_save(data)
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "JORNADA PAUSADA",
+                (
+                    "⏸️ Sua jornada foi pausada.\n\n"
+                    "O tempo desta pausa não será contabilizado "
+                    "como tempo trabalhado.\n\n"
+                    "Quando retornar, utilize **RETOMAR**."
+                ),
+                0xF59E0B,
+                interaction
+            )
+        )
+
+        await interaction.message.edit(
+            view=AuraVIPPontoPausedView()
+        )
+
+    @discord.ui.button(
+        label="Meu histórico",
+        emoji="📊",
+        style=discord.ButtonStyle.secondary,
+        custom_id="aura_vip_active_history"
+    )
+    async def history(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        user = data.get(
+            str(interaction.guild.id),
+            {}
+        ).get(
+            str(interaction.user.id),
+            {}
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "DESEMPENHO",
+                (
+                    f"⭐ Pontos: `{user.get('total_points', 0)}`\n"
+                    f"⏰ Atrasos: `{user.get('total_late_minutes', 0)} min`\n"
+                    f"💼 Trabalhado: "
+                    f"`{aura_vip_human_seconds(user.get('total_work_seconds', 0))}`"
+                ),
+                0x6366F1,
+                interaction
+            )
+        )
+
+
+class AuraVIPPontoPausedView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="RETOMAR",
+        emoji="▶️",
+        style=discord.ButtonStyle.success,
+        custom_id="aura_vip_resume"
+    )
+    async def resume(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        guild = data.get(
+            str(interaction.guild.id),
+            {}
+        )
+
+        user = guild.get(
+            str(interaction.user.id)
+        )
+
+        if not user:
+
+            return
+
+        if not user.get("paused"):
+
+            await aura_vip_respond(
+                interaction,
+                content="Sua jornada não está pausada.",
+                ephemeral=True
+            )
+
+            return
+
+        paused_at = aura_vip_parse_iso(
+            user["paused_at"]
+        )
+
+        pause_seconds = max(
+            0,
+            int(
+                (
+                    aura_vip_now()
+                    - paused_at
+                ).total_seconds()
+            )
+        )
+
+        user["total_pause_seconds"] = (
+            user.get(
+                "total_pause_seconds",
+                0
+            )
+            + pause_seconds
+        )
+
+        user["current_pause_seconds"] = (
+            pause_seconds
+        )
+
+        user["paused"] = False
+        user["paused_at"] = None
+
+        aura_vip_ponto_save(data)
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "JORNADA RETOMADA",
+                (
+                    f"▶️ Jornada retomada.\n\n"
+                    f"⏸️ Tempo da pausa: "
+                    f"`{aura_vip_human_seconds(pause_seconds)}`\n\n"
+                    "Esse período foi descontado do seu tempo "
+                    "trabalhado."
+                ),
+                0x22C55E,
+                interaction
+            )
+        )
+
+        await interaction.message.edit(
+            view=AuraVIPPontoActiveView()
+        )
+
+    @discord.ui.button(
+        label="Meu histórico",
+        emoji="📊",
+        style=discord.ButtonStyle.secondary,
+        custom_id="aura_vip_paused_history"
+    )
+    async def history(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_ponto_data()
+
+        user = data.get(
+            str(interaction.guild.id),
+            {}
+        ).get(
+            str(interaction.user.id),
+            {}
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "HISTÓRICO",
+                (
+                    f"⭐ Pontos: `{user.get('total_points', 0)}`\n"
+                    f"⏰ Atrasos: `{user.get('total_late_minutes', 0)} min`\n"
+                    f"⏸️ Pausas: "
+                    f"`{aura_vip_human_seconds(user.get('total_pause_seconds', 0))}`"
+                ),
+                0x6366F1,
+                interaction
+            )
+        )
+
+
+# ============================================================
+# FINALIZAR JORNADA
+# Não existe botão "SAIR" no painel.
+# A jornada pode ser encerrada por comando administrativo.
+# ============================================================
+
+async def aura_vip_finish_work(
+    guild_id,
+    user_id
+):
+
+    data = aura_vip_ponto_data()
+
+    guild = data.get(
+        str(guild_id),
+        {}
+    )
+
+    user = guild.get(
+        str(user_id)
+    )
+
+    if not user or not user.get("active"):
+        return None
+
+    now = aura_vip_now()
+
+    started = aura_vip_parse_iso(
+        user.get("started_at")
+    )
+
+    total = max(
+        0,
+        int(
+            (
+                now - started
+            ).total_seconds()
+        )
+    )
+
+    pause_seconds = user.get(
+        "total_pause_seconds",
+        0
+    )
+
+    if user.get("paused"):
+
+        paused_at = aura_vip_parse_iso(
+            user.get("paused_at")
+        )
+
+        pause_seconds += max(
+            0,
+            int(
+                (
+                    now - paused_at
+                ).total_seconds()
+            )
+        )
+
+    worked = max(
+        0,
+        total - pause_seconds
+    )
+
+    config = aura_vip_config().get(
+        "ponto",
+        {}
+    )
+
+    points = int(
+        (
+            worked / 3600
+        )
+        * config.get(
+            "points_per_work_hour",
+            20
+        )
+    )
+
+    user["total_work_seconds"] = (
+        user.get(
+            "total_work_seconds",
+            0
+        )
+        + worked
+    )
+
+    user["total_points"] = (
+        user.get(
+            "total_points",
+            0
+        )
+        + points
+    )
+
+    user["active"] = False
+    user["paused"] = False
+    user["paused_at"] = None
+
+    user.setdefault(
+        "history",
+        []
+    ).append(
+        {
+            "type": "finish",
+            "timestamp": aura_vip_iso(),
+            "worked_seconds": worked,
+            "points": points
+        }
+    )
+
+    aura_vip_ponto_save(data)
+
+    return {
+        "worked_seconds": worked,
+        "points": points
+    }
+
+
+# ============================================================
+# INCIDENT CENTER
+# ============================================================
+
+def aura_vip_create_incident(
+    guild_id,
+    incident_type,
+    description,
+    actor_id
+):
+
+    data = aura_vip_load(
+        AURA_VIP_INCIDENTS,
+        {}
+    )
+
+    guild = data.setdefault(
+        str(guild_id),
+        []
+    )
+
+    incident_id = (
+        f"INC-{int(time.time())}"
+    )
+
+    guild.append(
+        {
+            "id": incident_id,
+            "type": incident_type,
+            "description": description,
+            "actor_id": actor_id,
+            "created_at": aura_vip_iso(),
+            "status": "open"
+        }
+    )
+
+    aura_vip_save(
+        AURA_VIP_INCIDENTS,
+        data
+    )
+
+    return incident_id
+
+
+# ============================================================
+# CONQUISTAS
+# ============================================================
+
+VIP_ACHIEVEMENTS = {
+    "first_presence": {
+        "name": "Primeira Presença",
+        "emoji": "🟢",
+        "description": "Confirmou presença pela primeira vez."
+    },
+
+    "punctuality": {
+        "name": "Pontualidade",
+        "emoji": "⏱️",
+        "description": "Manteve presença pontual."
+    },
+
+    "worker": {
+        "name": "Colaborador",
+        "emoji": "💼",
+        "description": "Acumulou tempo de trabalho."
+    },
+
+    "ticket_master": {
+        "name": "Ticket Master",
+        "emoji": "🎫",
+        "description": "Participou de vários atendimentos."
+    }
+}
+
+
+# ============================================================
+# PAINEL VIP
+# ============================================================
+
+class AuraVIPPanelView(
+    discord.ui.View
+):
+
+    def __init__(self):
+
+        super().__init__(
+            timeout=180
+        )
+
+    @discord.ui.button(
+        label="Tickets",
+        emoji="🎫",
+        style=discord.ButtonStyle.primary
+    )
+    async def tickets(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = aura_vip_ticket_panel_embed(
+            interaction.guild
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed,
+            view=AuraVIPTicketPanelView()
+        )
+
+    @discord.ui.button(
+        label="Ponto",
+        emoji="🕐",
+        style=discord.ButtonStyle.success
+    )
+    async def ponto(
+        self,
+        interaction,
+        button
+    ):
+
+        embed = aura_vip_embed(
+            "CENTRAL DE PONTO",
+            (
+                "╭──────────────────────────╮\n"
+                "│       🕐 **PONTO VIP**\n"
+                "╰──────────────────────────╯\n\n"
+
+                "O AURA calcula automaticamente:\n\n"
+
+                "🟢 Presença\n"
+                "⏱️ Pontualidade\n"
+                "🟠 Minutos de atraso\n"
+                "💼 Tempo trabalhado\n"
+                "⏸️ Tempo pausado\n"
+                "⭐ Pontos conquistados\n\n"
+
+                "Quando você confirma presença, o sistema "
+                "compara o horário real com o horário esperado.\n\n"
+
+                "Exemplo:\n"
+                "`08:00` esperado\n"
+                "`08:10` confirmado\n\n"
+                "➡️ **10 minutos de atraso registrados.**\n\n"
+
+                "Durante a jornada, o botão é **PAUSAR**."
+            ),
+            0x22C55E,
+            interaction
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed,
+            view=AuraVIPPontoView()
+        )
+
+    @discord.ui.button(
+        label="Analytics",
+        emoji="📊",
+        style=discord.ButtonStyle.secondary
+    )
+    async def analytics(
+        self,
+        interaction,
+        button
+    ):
+
+        stats = aura_vip_stats(
+            interaction.guild.id
+        )
+
+        embed = aura_vip_embed(
+            "ANALYTICS VIP",
+            (
+                "📈 **Resumo do servidor**\n\n"
+                f"💬 Mensagens: `{stats.get('messages', 0)}`\n"
+                f"⚡ Comandos: `{stats.get('commands', 0)}`\n"
+                f"👥 Entradas: `{stats.get('joins', 0)}`\n"
+                f"🚪 Saídas: `{stats.get('leaves', 0)}`\n"
+                f"🎫 Tickets: `{stats.get('tickets', 0)}`\n"
+                f"🔒 Tickets encerrados: "
+                f"`{stats.get('tickets_closed', 0)}`\n"
+                f"🛡️ Moderação: `{stats.get('moderation', 0)}`\n"
+                f"⭐ Pontos distribuídos: "
+                f"`{stats.get('points', 0)}`"
+            ),
+            0x6366F1,
+            interaction
+        )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed
+        )
+
+    @discord.ui.button(
+        label="Incidentes",
+        emoji="🚨",
+        style=discord.ButtonStyle.danger
+    )
+    async def incidents(
+        self,
+        interaction,
+        button
+    ):
+
+        data = aura_vip_load(
+            AURA_VIP_INCIDENTS,
+            {}
+        )
+
+        incidents = data.get(
+            str(interaction.guild.id),
+            []
+        )
+
+        open_incidents = [
+            x for x in incidents
+            if x.get("status") == "open"
+        ]
+
+        embed = aura_vip_embed(
+            "INCIDENT CENTER",
+            (
+                f"🚨 Incidentes abertos: "
+                f"`{len(open_incidents)}`\n\n"
+                "O Incident Center VIP concentra "
+                "ocorrências e eventos críticos do servidor."
+            ),
+            0xEF4444,
+            interaction
+        )
+
+        for incident in open_incidents[-5:]:
+
+            embed.add_field(
+                name=(
+                    f"🚨 {incident.get('id')}"
+                ),
+                value=(
+                    f"**{incident.get('type')}**\n"
+                    f"{incident.get('description')[:200]}"
+                ),
+                inline=False
+            )
+
+        await aura_vip_respond(
+            interaction,
+            embed=embed
+        )
+
+
+# ============================================================
+# COMANDOS VIP
+# ============================================================
+
+@bot.tree.command(
+    name="ticket-vip",
+    description="Abre a central de tickets VIP."
+)
+async def aura_vip_ticket_command(
+    interaction
+):
+
+    embed = aura_vip_ticket_panel_embed(
+        interaction.guild
+    )
+
+    await aura_vip_respond(
+        interaction,
+        embed=embed,
+        view=AuraVIPTicketPanelView(),
+        ephemeral=False
+    )
+
+
+@bot.tree.command(
+    name="ponto-vip",
+    description="Abre a central de ponto VIP."
+)
+async def aura_vip_ponto_command(
+    interaction
+):
+
+    embed = aura_vip_embed(
+        "CENTRAL DE PONTO",
+        (
+            "🕐 **Sistema de presença VIP**\n\n"
+            "O sistema calcula automaticamente seus atrasos.\n\n"
+            "Exemplo:\n"
+            "Horário esperado: `08:00`\n"
+            "Confirmação: `08:10`\n"
+            "Atraso registrado: **10 minutos**\n\n"
+            "Durante sua jornada, utilize **PAUSAR** "
+            "quando precisar interromper temporariamente."
+        ),
+        0x22C55E,
+        interaction
+    )
+
+    await aura_vip_respond(
+        interaction,
+        embed=embed,
+        view=AuraVIPPontoView(),
+        ephemeral=False
+    )
+
+
+@bot.tree.command(
+    name="painel-vip",
+    description="Abre a central administrativa AURA VIP."
+)
+async def aura_vip_panel_command(
+    interaction
+):
+
+    if not aura_vip_manager(interaction):
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "Acesso negado",
+                "Você precisa de permissão administrativa.",
+                0xEF4444,
+                interaction
+            )
+        )
+
+        return
+
+    stats = aura_vip_stats(
+        interaction.guild.id
+    )
+
+    embed = aura_vip_embed(
+        "AURA VIP • CENTRAL",
+        (
+            "╭──────────────────────────────╮\n"
+            "│       ✦ **VIP CONTROL CENTER**\n"
+            "╰──────────────────────────────╯\n\n"
+
+            "A central administrativa concentra "
+            "os sistemas exclusivos da edição VIP.\n\n"
+
+            "🎫 Tickets avançados\n"
+            "🕐 Ponto inteligente\n"
+            "📊 Analytics\n"
+            "🚨 Incident Center\n"
+            "🤖 Automação\n"
+            "🏆 Conquistas\n"
+            "⚙️ Configurações\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+
+            f"🎫 Tickets: `{stats.get('tickets', 0)}`\n"
+            f"📊 Comandos: `{stats.get('commands', 0)}`\n"
+            f"🛡️ Incidentes: `{stats.get('moderation', 0)}`"
+        ),
+        0x8B5CF6,
+        interaction
+    )
+
+    await aura_vip_respond(
+        interaction,
+        embed=embed,
+        view=AuraVIPPanelView(),
+        ephemeral=True
+    )
+
+
+# ============================================================
+# HEALTH / STATUS
+# ============================================================
+
+@bot.tree.command(
+    name="vip-status",
+    description="Mostra o status dos sistemas VIP."
+)
+async def aura_vip_status_command(
+    interaction
+):
+
+    latency = round(
+        bot.latency * 1000
+    )
+
+    guild_count = len(
+        bot.guilds
+    )
+
+    embed = aura_vip_embed(
+        "AURA VIP • STATUS",
+        (
+            "🟢 **Sistema operacional**\n\n"
+            f"📡 Latência: `{latency}ms`\n"
+            f"🌐 Servidores: `{guild_count}`\n"
+            f"🎫 Tickets VIP: `ONLINE`\n"
+            f"🕐 Ponto VIP: `ONLINE`\n"
+            f"📊 Analytics: `ONLINE`\n"
+            f"🚨 Incident Center: `ONLINE`\n"
+            f"🏆 Achievements: `ONLINE`\n\n"
+            "✦ Todos os módulos VIP foram carregados."
+        ),
+        0x22C55E,
+        interaction
+    )
+
+    await aura_vip_respond(
+        interaction,
+        embed=embed
+    )
+
+
+# ============================================================
+# FINALIZAR JORNADA ADMINISTRATIVAMENTE
+# ============================================================
+
+@bot.tree.command(
+    name="ponto-finalizar",
+    description="Finaliza a jornada de um membro."
+)
+@app_commands.describe(
+    membro="Membro cuja jornada será finalizada."
+)
+async def aura_vip_finish_command(
+    interaction,
+    membro: discord.Member
+):
+
+    if not aura_vip_manager(interaction):
+
+        await aura_vip_respond(
+            interaction,
+            content="Você não possui permissão.",
+            ephemeral=True
+        )
+
+        return
+
+    result = await aura_vip_finish_work(
+        interaction.guild.id,
+        membro.id
+    )
+
+    if not result:
+
+        await aura_vip_respond(
+            interaction,
+            embed=aura_vip_embed(
+                "Nenhuma jornada ativa",
+                f"{membro.mention} não possui uma jornada ativa.",
+                0xF59E0B,
+                interaction
+            )
+        )
+
+        return
+
+    await aura_vip_respond(
+        interaction,
+        embed=aura_vip_embed(
+            "JORNADA FINALIZADA",
+            (
+                f"👤 **Membro:** {membro.mention}\n\n"
+                f"💼 **Tempo trabalhado:** "
+                f"`{aura_vip_human_seconds(result['worked_seconds'])}`\n"
+                f"⭐ **Pontos:** `+{result['points']}`"
+            ),
+            0x22C55E,
+            interaction
+        )
+    )
+
+
+# ============================================================
+# EVENTOS VIP SEGUROS
+# ============================================================
+
+async def aura_vip_record_message(message):
+
+    if not message.guild:
+        return
+
+    try:
+        aura_vip_increment(
+            message.guild.id,
+            "messages"
+        )
+    except Exception:
+        pass
+
+
+# ============================================================
+# RESTORE DE VIEWS
+# ============================================================
+
+async def aura_vip_register_persistent_views():
+
+    try:
+
+        bot.add_view(
+            AuraVIPTicketPanelView()
+        )
+
+        bot.add_view(
+            AuraVIPTicketControls()
+        )
+
+        bot.add_view(
+            AuraVIPPontoView()
+        )
+
+        bot.add_view(
+            AuraVIPPontoActiveView()
+        )
+
+        bot.add_view(
+            AuraVIPPontoPausedView()
+        )
+
+    except Exception:
+        pass
+
+
+# ============================================================
+# AURA VIP SYSTEM END
+# ============================================================
