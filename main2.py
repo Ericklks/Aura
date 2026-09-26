@@ -6,7 +6,6 @@ import io
 import json
 import os
 import random
-import secrets
 import re
 import shutil
 import sys
@@ -12427,10 +12426,7 @@ bot.setup_hook = setup_hook
 token = os.getenv('DISCORD_TOKEN')
 if not token:
     raise RuntimeError('Defina a variável de ambiente DISCORD_TOKEN antes de iniciar o bot.')
-bot.run(token)
-
-
-
+# AURA: bot.run movido para o final pelo atualizador
 # ============================================================
 # 🎫 TICKET V3 — VIEW PERSISTENTE
 # ============================================================
@@ -12460,4 +12456,590 @@ def _register_ticket_persistent_view():
                 f"{class_name}: {exc}"
             )
 
+# >>> AURA PROFESSIONAL ENGINE BEGIN >>>
+# Não editar este bloco manualmente. O atualizador o recria.
 
+import asyncio as _aura_asyncio
+import json as _aura_json
+import logging as _aura_logging
+import os as _aura_os
+import time as _aura_time
+import traceback as _aura_traceback
+from datetime import datetime as _aura_datetime, timezone as _aura_timezone
+from pathlib import Path as _aura_Path
+
+_AURA_ENGINE_VERSION = "2.0-professional"
+_AURA_ENGINE_STARTED = _aura_time.monotonic()
+_AURA_ENGINE_DATA = _aura_Path("aura_professional_state.json")
+_AURA_ENGINE_BACKUP_DIR = _aura_Path("aura_data_backups")
+_AURA_ENGINE_METRICS = {"commands": 0, "errors": 0, "tickets_recovered": 0, "views_registered": 0}
+_AURA_ENGINE_LOG = _aura_Path("aura_professional.log")
+
+# ============================================================
+# LOGGING CENTRALIZADO
+# ============================================================
+
+_aura_logger = _aura_logging.getLogger("aura.professional")
+if not _aura_logger.handlers:
+    _aura_logger.setLevel(_aura_logging.INFO)
+    try:
+        _aura_handler = _aura_logging.FileHandler(_AURA_ENGINE_LOG, encoding="utf-8")
+        _aura_handler.setFormatter(_aura_logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
+        _aura_logger.addHandler(_aura_handler)
+    except Exception:
+        pass
+
+
+def _aura_save_metrics():
+    payload = {
+        "version": _AURA_ENGINE_VERSION,
+        "updated_at": _aura_datetime.now(_aura_timezone.utc).isoformat(),
+        "metrics": dict(_AURA_ENGINE_METRICS),
+        "guilds": len(getattr(bot, "guilds", [])),
+        "latency_ms": round(float(getattr(bot, "latency", 0.0)) * 1000, 2),
+        "uptime_seconds": int(_aura_time.monotonic() - _AURA_ENGINE_STARTED),
+    }
+    try:
+        temp = _AURA_ENGINE_DATA.with_suffix(".tmp")
+        temp.write_text(_aura_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(_AURA_ENGINE_DATA)
+    except Exception:
+        pass
+
+
+# ============================================================
+# RESPOSTAS PROFISSIONAIS DE ERRO
+# ============================================================
+
+async def _aura_app_command_error(interaction, error):
+    _AURA_ENGINE_METRICS["errors"] += 1
+    _aura_logger.error(
+        "App command error: %s\n%s",
+        error,
+        "".join(_aura_traceback.format_exception(type(error), error, error.__traceback__)),
+    )
+
+    message = "❌ O comando encontrou um erro interno. O erro foi registrado e o sistema continua protegido."
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(message, ephemeral=True)
+        else:
+            await interaction.followup.send(message, ephemeral=True)
+    except Exception:
+        pass
+
+
+try:
+    bot.tree.on_error = _aura_app_command_error
+except Exception:
+    pass
+
+
+async def _aura_command_error(ctx, error):
+    _AURA_ENGINE_METRICS["errors"] += 1
+    _aura_logger.error(
+        "Prefix error: %s\n%s",
+        error,
+        "".join(_aura_traceback.format_exception(type(error), error, error.__traceback__)),
+    )
+
+    try:
+        if isinstance(error, commands.CommandNotFound):
+            return
+        await ctx.send("❌ Não foi possível concluir esse comando. O erro foi registrado.", delete_after=10)
+    except Exception:
+        pass
+
+
+try:
+    bot.add_listener(_aura_command_error, "on_command_error")
+except Exception:
+    pass
+
+
+# ============================================================
+# MÉTRICAS / AUDITORIA
+# ============================================================
+
+async def _aura_app_command_completion(interaction, command):
+    _AURA_ENGINE_METRICS["commands"] += 1
+    try:
+        name = getattr(command, "qualified_name", getattr(command, "name", "unknown"))
+        guild = getattr(interaction.guild, "id", None)
+        _aura_logger.info("COMMAND | guild=%s | user=%s | command=/%s", guild, interaction.user.id, name)
+    except Exception:
+        pass
+
+try:
+    bot.add_listener(_aura_app_command_completion, "on_app_command_completion")
+except Exception:
+    pass
+
+
+# ============================================================
+# RECUPERAÇÃO DAS VIEWS PERSISTENTES
+# ============================================================
+
+async def _aura_restore_persistent_views():
+    # Ticket V3: painéis + controles dos tickets abertos.
+    try:
+        _load = globals().get("t3_load")
+        _panel_view_cls = globals().get("T3PanelView")
+        _ticket_view_cls = globals().get("T3TicketView")
+        if callable(_load):
+            _data = _load()
+
+            if callable(_panel_view_cls):
+                for _panel in _data.get("panels", {}).values():
+                    _message_id = _panel.get("panel_message_id")
+                    if not _message_id:
+                        continue
+                    try:
+                        bot.add_view(_panel_view_cls(_panel), message_id=int(_message_id))
+                        _AURA_ENGINE_METRICS["views_registered"] += 1
+                    except Exception as _exc:
+                        _aura_logger.debug("Painel não restaurado: %r", _exc)
+
+            if callable(_ticket_view_cls):
+                for _ticket_id, _ticket in _data.get("tickets", {}).items():
+                    if _ticket.get("closed"):
+                        continue
+                    _message_id = _ticket.get("message_id")
+                    if not _message_id:
+                        continue
+                    try:
+                        bot.add_view(_ticket_view_cls(str(_ticket_id)), message_id=int(_message_id))
+                        _AURA_ENGINE_METRICS["views_registered"] += 1
+                    except Exception as _exc:
+                        _aura_logger.debug("Ticket view não restaurado: %r", _exc)
+    except Exception:
+        _aura_logger.exception("Falha na recuperação das views do Ticket V3")
+
+    # Views persistentes sem argumentos que já existem no código do bot.
+    for _name in (
+        "VerificationView",
+        "ClockView",
+    ):
+        _cls = globals().get(_name)
+        if not callable(_cls):
+            continue
+        try:
+            bot.add_view(_cls())
+            _AURA_ENGINE_METRICS["views_registered"] += 1
+        except Exception:
+            pass
+
+
+# ============================================================
+# MELHORIA DO TICKET: SALVA O message_id DO CONTROLE
+# ============================================================
+
+_original_t3_create_ticket = globals().get("t3_create_ticket")
+if callable(_original_t3_create_ticket) and not getattr(_original_t3_create_ticket, "_aura_professional_wrapped", False):
+    async def _aura_t3_create_ticket(interaction, panel, ticket_type, answers=None):
+        _channel, _ticket = await _original_t3_create_ticket(interaction, panel, ticket_type, answers)
+        try:
+            _found_message_id = None
+            async for _msg in _channel.history(limit=8):
+                if getattr(_msg.author, "id", None) == getattr(bot.user, "id", None) and _msg.components:
+                    _found_message_id = _msg.id
+                    break
+            if _found_message_id:
+                _data = globals().get("t3_load", lambda: {})()
+                _saved_ticket = _data.get("tickets", {}).get(str(_ticket.get("id")))
+                if _saved_ticket is not None:
+                    _saved_ticket["message_id"] = _found_message_id
+                    _saved_ticket["channel_id"] = getattr(_channel, "id", _saved_ticket.get("channel_id"))
+                    globals()["t3_save"](_data)
+        except Exception:
+            _aura_logger.exception("Não foi possível registrar message_id do Ticket V3")
+        return _channel, _ticket
+
+    _aura_t3_create_ticket._aura_professional_wrapped = True
+    globals()["t3_create_ticket"] = _aura_t3_create_ticket
+
+
+# ============================================================
+# DATA LAYER: BACKUP E DETECÇÃO DE JSON CORROMPIDO
+# ============================================================
+
+_AURA_DATA_FILES = (
+    "data.json",
+    "ticket_panels.json",
+    "tickets_v3.json",
+    "aura_professional_state.json",
+)
+
+
+def _aura_backup_data_files():
+    _AURA_ENGINE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    _stamp = _aura_datetime.now().strftime("%Y%m%d_%H%M%S")
+    for _name in _AURA_DATA_FILES:
+        _path = _aura_Path(_name)
+        if not _path.exists():
+            continue
+        try:
+            _dest = _AURA_ENGINE_BACKUP_DIR / f"{_path.stem}_{_stamp}{_path.suffix}"
+            shutil.copy2(_path, _dest)
+        except Exception:
+            pass
+
+    try:
+        _files = sorted(_AURA_ENGINE_BACKUP_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for _old in _files[60:]:
+            try:
+                _old.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _aura_check_json_files():
+    for _name in _AURA_DATA_FILES:
+        _path = _aura_Path(_name)
+        if not _path.exists():
+            continue
+        try:
+            _aura_json.loads(_path.read_text(encoding="utf-8"))
+        except Exception as _exc:
+            _aura_logger.error("JSON potencialmente corrompido: %s | %s", _name, _exc)
+
+
+# ============================================================
+# CENTRAL PROFISSIONAL / PAINEL DE ADMINISTRAÇÃO
+# ============================================================
+
+try:
+    _aura_central_group = app_commands.Group(
+        name="central",
+        description="Central profissional de administração do bot.",
+    )
+except Exception:
+    _aura_central_group = None
+
+
+def _aura_count_commands(command_list):
+    total = 0
+    for _cmd in command_list:
+        total += 1
+        total += len(getattr(_cmd, "commands", []) or [])
+    return total
+
+
+def _aura_color():
+    try:
+        return discord.Color(0xD4AF37)
+    except Exception:
+        return discord.Color.blurple()
+
+
+def _aura_embed(title, description=""):
+    _embed = discord.Embed(title=title, description=description, color=_aura_color(), timestamp=_aura_datetime.now(_aura_timezone.utc))
+    _embed.set_footer(text=f"AURA Professional Engine • v{_AURA_ENGINE_VERSION}")
+    return _embed
+
+
+class _AuraCentralView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Status", emoji="📊", style=discord.ButtonStyle.primary)
+    async def status(self, interaction, button):
+        embed = _aura_status_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Diagnóstico", emoji="🧪", style=discord.ButtonStyle.secondary)
+    async def diagnostic(self, interaction, button):
+        embed = _aura_diagnostic_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Tickets", emoji="🎫", style=discord.ButtonStyle.success)
+    async def tickets(self, interaction, button):
+        embed = _aura_ticket_stats_embed(interaction.guild)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Recarregar", emoji="♻️", style=discord.ButtonStyle.secondary)
+    async def reload_views(self, interaction, button):
+        await _aura_restore_persistent_views()
+        await interaction.response.send_message("✅ Views persistentes recarregadas.", ephemeral=True)
+
+
+def _aura_status_embed():
+    _guilds = len(getattr(bot, "guilds", []))
+    _latency = float(getattr(bot, "latency", 0.0)) * 1000
+    _uptime = int(_aura_time.monotonic() - _AURA_ENGINE_STARTED)
+    _embed = _aura_embed("🟡 Central do Bot", "Visão geral da operação.")
+    _embed.add_field(name="🤖 Instância", value=f"`{getattr(bot.user, 'id', 'N/A')}`", inline=True)
+    _embed.add_field(name="🏠 Servidores", value=str(_guilds), inline=True)
+    _embed.add_field(name="📡 Latência", value=f"{_latency:.0f} ms", inline=True)
+    _embed.add_field(name="⏱️ Uptime", value=f"{_uptime}s", inline=True)
+    _embed.add_field(name="⚡ Comandos executados", value=str(_AURA_ENGINE_METRICS["commands"]), inline=True)
+    _embed.add_field(name="🚨 Erros registrados", value=str(_AURA_ENGINE_METRICS["errors"]), inline=True)
+    return _embed
+
+
+def _aura_diagnostic_embed():
+    _embed = _aura_embed("🧪 Diagnóstico profissional", "Verificação rápida dos principais componentes.")
+    _checks = []
+
+    try:
+        import ssl as _ssl
+        _checks.append(("🔐 SSL nativo", "OK" if _ssl.OPENSSL_VERSION else "ALERTA"))
+    except Exception as _exc:
+        _checks.append(("🔐 SSL nativo", f"ERRO: {_exc}"))
+
+    _checks.append(("📦 discord.py", "OK" if globals().get("discord") else "ERRO"))
+    _checks.append(("🌐 aiohttp", "OK" if globals().get("aiohttp") else "ERRO"))
+    _checks.append(("🧩 Slash tree", f"{_aura_count_commands(bot.tree.get_commands())} entradas"))
+    _checks.append(("🎫 Ticket V3", "OK" if callable(globals().get("t3_load")) else "Não detectado"))
+
+    for _name, _value in _checks:
+        _embed.add_field(name=_name, value=_value[:1024], inline=False)
+    return _embed
+
+
+def _aura_ticket_stats_embed(guild):
+    _embed = _aura_embed("🎫 Tickets", "Estado atual do atendimento.")
+    try:
+        _load = globals().get("t3_load")
+        _data = _load() if callable(_load) else {}
+        _tickets = [x for x in _data.get("tickets", {}).values() if str(x.get("guild_id")) == str(guild.id)]
+        _open = [x for x in _tickets if not x.get("closed")]
+        _closed = [x for x in _tickets if x.get("closed")]
+        _panels = [x for x in _data.get("panels", {}).values() if str(x.get("guild_id")) == str(guild.id)]
+        _embed.add_field(name="🟢 Abertos", value=str(len(_open)), inline=True)
+        _embed.add_field(name="🔒 Fechados", value=str(len(_closed)), inline=True)
+        _embed.add_field(name="🧱 Painéis", value=str(len(_panels)), inline=True)
+        return _embed
+    except Exception as _exc:
+        _embed.description = f"Não foi possível ler o banco: `{_exc}`"
+        return _embed
+
+
+if _aura_central_group is not None:
+
+    @_aura_central_group.command(name="painel", description="Abre a central profissional do bot.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_painel(interaction):
+        await interaction.response.send_message(embed=_aura_status_embed(), view=_AuraCentralView(), ephemeral=True)
+
+    @_aura_central_group.command(name="status", description="Mostra o status operacional do bot.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_status(interaction):
+        await interaction.response.send_message(embed=_aura_status_embed(), ephemeral=True)
+
+    @_aura_central_group.command(name="diagnostico", description="Executa diagnóstico do bot.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_diagnostic(interaction):
+        await interaction.response.send_message(embed=_aura_diagnostic_embed(), ephemeral=True)
+
+    @_aura_central_group.command(name="tickets", description="Mostra as métricas de tickets do servidor.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_tickets(interaction):
+        await interaction.response.send_message(embed=_aura_ticket_stats_embed(interaction.guild), ephemeral=True)
+
+    @_aura_central_group.command(name="comandos", description="Lista os blocos e a quantidade de comandos carregados.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_comandos(interaction):
+        _commands = bot.tree.get_commands()
+        _lines = []
+        for _cmd in _commands:
+            _sub = getattr(_cmd, "commands", []) or []
+            if _sub:
+                _lines.append(f"`/{_cmd.name}` → **{len(_sub)}** subcomandos")
+            else:
+                _lines.append(f"`/{_cmd.name}`")
+        _embed = _aura_embed("🧩 Comandos carregados", f"Total de entradas principais: **{len(_commands)}**")
+        _embed.add_field(name="Catálogo", value="\n".join(_lines)[:4000] or "Nenhum", inline=False)
+        await interaction.response.send_message(embed=_embed, ephemeral=True)
+
+    @_aura_central_group.command(name="backup", description="Cria backup imediato dos dados do bot.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_backup(interaction):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await _aura_asyncio.to_thread(_aura_backup_data_files)
+            await interaction.followup.send("✅ Backup dos dados concluído.", ephemeral=True)
+        except Exception as _exc:
+            await interaction.followup.send(f"❌ Falha no backup: `{_exc}`", ephemeral=True)
+
+    @_aura_central_group.command(name="recarregar", description="Recarrega views persistentes do sistema.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def _aura_central_reload(interaction):
+        await interaction.response.defer(ephemeral=True)
+        await _aura_restore_persistent_views()
+        await interaction.followup.send("✅ Views persistentes recarregadas.", ephemeral=True)
+
+    try:
+        if not any(getattr(_c, "name", None) == "central" for _c in bot.tree.get_commands()):
+            bot.tree.add_command(_aura_central_group)
+    except Exception as _exc:
+        _aura_logger.error("Falha ao registrar /central: %r", _exc)
+
+
+# ============================================================
+# WATCHDOG / STATUS / BACKUPS
+# ============================================================
+
+try:
+    _aura_background_task = None
+
+    @tasks.loop(minutes=5)
+    async def _aura_professional_loop():
+        try:
+            _aura_check_json_files()
+            _aura_save_metrics()
+            await _aura_restore_persistent_views()
+        except Exception:
+            _aura_logger.exception("Falha no loop profissional")
+
+    @_aura_professional_loop.before_loop
+    async def _aura_professional_before_loop():
+        await bot.wait_until_ready()
+
+except Exception:
+    _aura_professional_loop = None
+
+
+try:
+    @tasks.loop(minutes=30)
+    async def _aura_backup_loop():
+        try:
+            await _aura_asyncio.to_thread(_aura_backup_data_files)
+        except Exception:
+            _aura_logger.exception("Falha no backup automático")
+
+    @_aura_backup_loop.before_loop
+    async def _aura_backup_before_loop():
+        await bot.wait_until_ready()
+except Exception:
+    _aura_backup_loop = None
+
+
+try:
+    @tasks.loop(minutes=3)
+    async def _aura_presence_loop():
+        try:
+            _count = len(getattr(bot, "guilds", []))
+            await bot.change_presence(
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name=f"{_count} servidores • /central",
+                )
+            )
+        except Exception:
+            pass
+
+    @_aura_presence_loop.before_loop
+    async def _aura_presence_before_loop():
+        await bot.wait_until_ready()
+except Exception:
+    _aura_presence_loop = None
+
+
+# ============================================================
+# SETUP HOOK PROFISSIONAL
+# ============================================================
+
+_AURA_ORIGINAL_SETUP_HOOK = globals().get("setup_hook")
+
+async def _aura_professional_setup_hook():
+    if callable(_AURA_ORIGINAL_SETUP_HOOK):
+        try:
+            await _AURA_ORIGINAL_SETUP_HOOK()
+        except Exception:
+            _aura_logger.exception("setup_hook original falhou")
+
+    try:
+        await _aura_restore_persistent_views()
+    except Exception:
+        _aura_logger.exception("Falha nas views persistentes")
+
+    # Importante: o /central e todos os comandos do arquivo já foram definidos aqui.
+    try:
+        _synced = await bot.tree.sync()
+        _aura_logger.info("Slash commands sincronizados: %s", len(_synced))
+    except Exception:
+        _aura_logger.exception("Falha ao sincronizar slash commands")
+
+    for _loop in (_aura_professional_loop, _aura_backup_loop, _aura_presence_loop):
+        if _loop is not None:
+            try:
+                if not _loop.is_running():
+                    _loop.start()
+            except Exception:
+                _aura_logger.exception("Não foi possível iniciar task profissional")
+
+    _aura_save_metrics()
+
+
+try:
+    bot.setup_hook = _aura_professional_setup_hook
+except Exception:
+    pass
+
+
+# ============================================================
+# READY / GUILD JOIN / GUILD REMOVE
+# ============================================================
+
+async def _aura_ready_listener():
+    try:
+        _aura_logger.info(
+            "READY | bot=%s | guilds=%s | latency=%.0fms | engine=%s",
+            bot.user,
+            len(getattr(bot, "guilds", [])),
+            float(getattr(bot, "latency", 0.0)) * 1000,
+            _AURA_ENGINE_VERSION,
+        )
+    except Exception:
+        pass
+
+
+async def _aura_guild_join_listener(guild):
+    _aura_logger.info("GUILD JOIN | %s (%s)", guild.name, guild.id)
+    try:
+        _save = globals().get("save_data")
+        if callable(_save):
+            _save()
+    except Exception:
+        pass
+
+
+async def _aura_guild_remove_listener(guild):
+    _aura_logger.warning("GUILD REMOVE | %s (%s)", guild.name, guild.id)
+
+
+try:
+    bot.add_listener(_aura_ready_listener, "on_ready")
+    bot.add_listener(_aura_guild_join_listener, "on_guild_join")
+    bot.add_listener(_aura_guild_remove_listener, "on_guild_remove")
+except Exception:
+    pass
+
+
+# ============================================================
+# PRIMEIRA CARGA DA CAMADA
+# ============================================================
+
+try:
+    _AURA_ENGINE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    _aura_check_json_files()
+except Exception:
+    pass
+
+# <<< AURA PROFESSIONAL ENGINE END <<<
+
+# ============================================================
+# 🚀 AURA — EXECUÇÃO FINAL
+# ============================================================
+
+if __name__ == "__main__":
+    # O host fornece DISCORD_TOKEN e qualquer outra variável já existente.
+    # O atualizador não solicita nem armazena credenciais.
+    _aura_host_token = os.getenv("DISCORD_TOKEN")
+    if not _aura_host_token:
+        # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
+        raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
+    bot.run(_aura_host_token)
