@@ -1496,216 +1496,6 @@ class T3FormModal(discord.ui.Modal):
 # SELECT DO PAINEL
 # ============================================================
 
-class T3TypeSelect(
-    discord.ui.Select
-):
-
-    def __init__(
-        self,
-        panel
-    ):
-        self.panel_id = str(
-            panel["id"]
-        )
-
-        options = []
-
-        for item in panel.get(
-            "types",
-            []
-        )[:25]:
-
-            options.append(
-                discord.SelectOption(
-                    label=str(
-                        item.get(
-                            "name",
-                            "Atendimento"
-                        )
-                    )[:100],
-
-                    description=str(
-                        item.get(
-                            "description",
-                            ""
-                        )
-                    )[:100],
-
-                    emoji=item.get(
-                        "emoji",
-                        "🎫"
-                    ),
-
-                    value=str(
-                        item.get(
-                            "id"
-                        )
-                    ),
-
-                    default=False
-                )
-            )
-
-        if not options:
-
-            options.append(
-                discord.SelectOption(
-                    label="Suporte",
-                    value="none",
-                    emoji="🎫",
-                    default=False
-                )
-            )
-
-        super().__init__(
-            placeholder=
-                "🎫 Selecione o tipo de atendimento...",
-
-            min_values=1,
-            max_values=1,
-
-            options=options,
-
-            custom_id=
-                f"t3:type:{self.panel_id}"
-        )
-
-    async def _reset_panel(
-        self,
-        interaction
-    ):
-        try:
-
-            message = getattr(
-                interaction,
-                "message",
-                None
-            )
-
-            if not message:
-                return
-
-            panel = t3_get_panel(
-                self.panel_id
-            )
-
-            if not panel:
-                return
-
-            await message.edit(
-                view=T3PanelView(
-                    panel
-                )
-            )
-
-        except Exception as exc:
-
-            print(
-                "[TICKET V3] "
-                f"Erro ao resetar Select: {exc!r}"
-            )
-
-    async def callback(
-        self,
-        interaction
-    ):
-        panel = t3_get_panel(
-            self.panel_id
-        )
-
-        if not panel:
-
-            await interaction.response.send_message(
-                "❌ Painel não encontrado.",
-                ephemeral=True
-            )
-
-            return
-
-        if not self.values:
-
-            await interaction.response.send_message(
-                "❌ Selecione um tipo.",
-                ephemeral=True
-            )
-
-            return
-
-        ticket_type = t3_get_type(
-            panel,
-            self.values[0]
-        )
-
-        if not ticket_type:
-
-            await interaction.response.send_message(
-                "❌ Tipo inválido.",
-                ephemeral=True
-            )
-
-            await self._reset_panel(
-                interaction
-            )
-
-            return
-
-        # ----------------------------------------------------
-        # FORMULÁRIO
-        # ----------------------------------------------------
-
-        if ticket_type.get("form"):
-
-            # A mensagem do painel é resetada antes do modal.
-            await self._reset_panel(
-                interaction
-            )
-
-            await interaction.response.send_modal(
-                T3FormModal(
-                    panel,
-                    ticket_type
-                )
-            )
-
-            return
-
-        # ----------------------------------------------------
-        # CRIAÇÃO
-        # ----------------------------------------------------
-
-        await interaction.response.defer(
-            ephemeral=True
-        )
-
-        try:
-
-            channel, _ = await t3_create_ticket(
-                interaction,
-                panel,
-                ticket_type
-            )
-
-            await interaction.followup.send(
-                f"✅ Ticket criado: {channel.mention}",
-                ephemeral=True
-            )
-
-        except Exception as exc:
-
-            await interaction.followup.send(
-                f"❌ {exc}",
-                ephemeral=True
-            )
-
-        finally:
-
-            # ------------------------------------------------
-            # ISSO FAZ O SELECT VOLTAR AO PLACEHOLDER
-            # ------------------------------------------------
-
-            await self._reset_panel(
-                interaction
-            )
 
 
 
@@ -3651,109 +3441,6 @@ class T3RatingView(
 # PAINEL ADMINISTRATIVO
 # ============================================================
 
-class T3AdminView(
-    discord.ui.View
-):
-
-    def __init__(self):
-        super().__init__(
-            timeout=300
-        )
-
-    @discord.ui.button(
-        label="➕ Criar painel",
-        style=discord.ButtonStyle.success
-    )
-    async def create(
-        self,
-        interaction,
-        button
-    ):
-        await interaction.response.send_modal(
-            T3CreatePanelModal()
-        )
-
-    @discord.ui.button(
-        label="🎨 Gerenciar painéis",
-        style=discord.ButtonStyle.primary
-    )
-    async def manage(
-        self,
-        interaction,
-        button
-    ):
-        data = t3_load()
-
-        panels = [
-            panel
-            for panel in data[
-                "panels"
-            ].values()
-            if str(
-                panel.get(
-                    "guild_id"
-                )
-            ) == str(
-                interaction.guild.id
-            )
-        ]
-
-        if not panels:
-            return await interaction.response.send_message(
-                "📭 Nenhum painel criado.",
-                ephemeral=True
-            )
-
-        await interaction.response.send_message(
-            "🎨 Escolha o painel:",
-            view=T3PanelPickerView(
-                panels
-            ),
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="📊 Estatísticas",
-        style=discord.ButtonStyle.secondary
-    )
-    async def statistics(
-        self,
-        interaction,
-        button
-    ):
-        data = t3_load()
-
-        stats = data[
-            "stats"
-        ].get(
-            str(
-                interaction.guild.id
-            ),
-            {}
-        )
-
-        opened = len(
-            t3_open_tickets(
-                interaction.guild.id
-            )
-        )
-
-        embed = discord.Embed(
-            title="📊 Estatísticas",
-            description=(
-                f"🎫 Criados: **{stats.get('created', 0)}**\n"
-                f"🔒 Fechados: **{stats.get('closed', 0)}**\n"
-                f"🟢 Abertos: **{opened}**\n"
-                f"🔓 Reabertos: **{stats.get('reopened', 0)}**\n"
-                f"⭐ Avaliações: **{stats.get('evaluations', 0)}**"
-            ),
-            color=discord.Color.blurple()
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
 
 
 # ============================================================
@@ -3929,129 +3616,6 @@ class T3PanelPickerView(
         )
 
 
-class T3EditorView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        panel_id
-    ):
-        super().__init__(
-            timeout=300
-        )
-
-        self.panel_id = str(
-            panel_id
-        )
-
-    @discord.ui.button(
-        label="📤 Publicar",
-        style=discord.ButtonStyle.success
-    )
-    async def publish(
-        self,
-        interaction,
-        button
-    ):
-        data = t3_load()
-
-        panel = data[
-            "panels"
-        ].get(
-            self.panel_id
-        )
-
-        if not panel:
-
-            return await interaction.response.send_message(
-                "❌ Painel não encontrado.",
-                ephemeral=True
-            )
-
-        channel = t3_channel(
-            interaction.guild,
-            panel.get(
-                "panel_channel_id"
-            )
-        )
-
-        if not isinstance(
-            channel,
-            discord.TextChannel
-        ):
-
-            return await interaction.response.send_message(
-                "❌ Canal inválido.",
-                ephemeral=True
-            )
-
-        message = await channel.send(
-            embed=
-                t3_panel_embed(
-                    panel
-                ),
-            view=
-                T3PanelView(
-                    panel
-                )
-        )
-
-        panel[
-            "panel_message_id"
-        ] = message.id
-
-        t3_save(data)
-
-        await interaction.response.send_message(
-            f"✅ Painel publicado em {channel.mention}.",
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="➕ Tipo",
-        style=discord.ButtonStyle.primary
-    )
-    async def add_type(
-        self,
-        interaction,
-        button
-    ):
-        await interaction.response.send_modal(
-            T3AddTypeModal(
-                self.panel_id
-            )
-        )
-
-    @discord.ui.button(
-        label="📝 Formulário",
-        style=discord.ButtonStyle.secondary
-    )
-    async def form(
-        self,
-        interaction,
-        button
-    ):
-        await interaction.response.send_modal(
-            T3FormModalConfig(
-                self.panel_id
-            )
-        )
-
-    @discord.ui.button(
-        label="⚙️ Configurações",
-        style=discord.ButtonStyle.secondary
-    )
-    async def config(
-        self,
-        interaction,
-        button
-    ):
-        await interaction.response.send_modal(
-            T3ConfigModal(
-                self.panel_id
-            )
-        )
 
 
 # ============================================================
@@ -5646,38 +5210,6 @@ async def on_guild_join(guild):
     else:
         await internal_log('servidor adicionado', f'🤖 O FuriousBot foi adicionado ao servidor **{guild.name}** (`{guild.id}`).\n\n⚠️ Não foi possível gerar o convite. Verifique a configuração do canal de logs internos e a permissão **Criar convite**.', guild)
 
-@bot.event
-async def on_member_join(member):
-    security = security_config(member.guild.id)
-    banned_actors = {int(user_id) for user_id in security.get('banned_actors', [])}
-    if member.id in banned_actors:
-        try:
-            await member.guild.ban(member, reason='Anti-raid: atacante anteriormente banido retornou ao servidor', delete_message_seconds=0)
-        except discord.Forbidden:
-            pass
-        except discord.HTTPException:
-            pass
-        return
-    verification = verification_config(member.guild.id)
-    if verification.get('enabled') and member.bot and (member.id != (bot.user.id if bot.user else 0)) and (member.id not in {int(user_id) for user_id in verification.get('allowed_bots', [])}):
-        try:
-            await member.kick(reason='Bot não autorizado pela verificação padrão')
-            await internal_log('bot bloqueado', f'Bot não autorizado {member} (`{member.id}`) foi expulso.', member.guild, 'ERROR')
-        except discord.HTTPException as error:
-            await internal_log('falha ao bloquear bot', f'Não foi possível expulsar {member} (`{member.id}`): {error}', member.guild, 'ERROR')
-        return
-    autorole_id = guild_settings(member.guild.id).get('autorole_id')
-    autorole = member.guild.get_role(int(autorole_id)) if autorole_id else None
-    if autorole:
-        try:
-            await member.add_roles(autorole, reason='Autorole configurado no servidor')
-        except discord.HTTPException:
-            pass
-    inviter = await identify_inviter(member.guild)
-    inviter_text = inviter.mention if inviter else 'Não identificado (sem permissão para ler convites)'
-    await audit_log(member.guild, 'membros', 'Membro entrou no servidor', member, member.mention)
-    await send_server_event(member.guild, 'welcome_channel_id', '👋 Novo membro no servidor', f'Boas-vindas, {member.mention}!', discord.Color.green(), [('Usuário', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
-    await send_server_event(member.guild, 'invite_channel_id', '📨 Convite utilizado', f'{member.mention} entrou no servidor.', discord.Color.blue(), [('Convidado', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
 
 @bot.event
 async def on_member_remove(member):
@@ -5762,45 +5294,6 @@ async def on_message_delete(message):
     if message.guild and (not message.author.bot):
         await audit_log(message.guild, 'mensagens', 'Mensagem apagada', message.author, message.content or '[sem texto]')
 
-@bot.event
-async def on_message(message):
-    if message.author.bot or not message.guild:
-        return
-    if await process_automod(message):
-        return
-    if protected_channel_matches(message):
-        print(f'[SEGURANCA] Mensagem recebida no canal protegido: {message.author} ({message.author.id})')
-        try:
-            await message.delete(reason='Canal protegido contra contas comprometidas')
-        except discord.Forbidden:
-            delete_error = 'o bot não possui Gerenciar mensagens'
-        except discord.HTTPException as error:
-            delete_error = f'falha ao apagar a mensagem ({error})'
-        except Exception as error:
-            delete_error = f'falha inesperada ao apagar ({type(error).__name__}: {error})'
-            print(f'[SEGURANCA] Erro ao apagar mensagem: {type(error).__name__}: {error}')
-        else:
-            delete_error = 'mensagem apagada'
-        try:
-            banned, result = await ban_protected_author(message)
-        except Exception as error:
-            banned = False
-            result = f'falha inesperada no ban ({type(error).__name__}: {error})'
-            print(f'[SEGURANCA] Erro ao banir autor: {type(error).__name__}: {error}')
-        await audit_log(message.guild, 'seguranca', 'Ação no canal protegido', message.author, f'Canal: {message.channel.mention}; {delete_error}; resultado do ban: {result}')
-        if not banned and result != 'usuário imune':
-            alert = security_config(message.guild.id).get('alert_channel_id')
-            alert_channel = message.guild.get_channel(int(alert)) if alert else message.guild.system_channel
-            if alert_channel:
-                try:
-                    await alert_channel.send(f'⚠️ Ação no canal protegido para {message.author.mention}: {delete_error}; {result}. Verifique as permissões e a posição do cargo do bot.')
-                except discord.HTTPException:
-                    pass
-        return
-    leveled_up, level = grant_message_xp(message.guild.id, message.author.id)
-    if leveled_up:
-        await message.channel.send(f'🎉 {message.author.mention} alcançou o nível **{level}**!', delete_after=10)
-    await bot.process_commands(message)
 
 @bot.event
 async def on_guild_channel_create(channel):
@@ -12154,222 +11647,12 @@ async def sistema_modlogs(
 # EVENTO: NOVO MEMBRO
 # ============================================================
 
-@bot.event
-async def on_member_join(member):
-    try:
-        config = adv_guild(
-            member.guild.id
-        )
-
-        # Autorole
-        role_id = config.get(
-            "autorole_id"
-        )
-
-        if role_id:
-            role = member.guild.get_role(
-                int(role_id)
-            )
-
-            if role:
-                try:
-                    await member.add_roles(
-                        role,
-                        reason="Autorole"
-                    )
-                except discord.HTTPException:
-                    pass
-
-        # Boas-vindas
-        channel_id = config.get(
-            "welcome_channel_id"
-        )
-
-        channel = (
-            member.guild.get_channel(
-                int(channel_id)
-            )
-            if channel_id
-            else None
-        )
-
-        if channel:
-            message = config.get(
-                "welcome_message",
-                "🎉 Seja bem-vindo(a), {user}!"
-            )
-
-            message = (
-                message
-                .replace(
-                    "{user}",
-                    member.mention
-                )
-                .replace(
-                    "{username}",
-                    member.display_name
-                )
-                .replace(
-                    "{members}",
-                    str(
-                        member.guild.member_count
-                    )
-                )
-                .replace(
-                    "{server}",
-                    member.guild.name
-                )
-            )
-
-            await channel.send(
-                message
-            )
-
-    except Exception as exc:
-        print(
-            f"[SISTEMAS] Erro on_member_join: {exc!r}"
-        )
 
 
 # ============================================================
 # EVENTO: MENSAGENS → XP + AUT0MOD BÁSICO
 # ============================================================
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    if not message.guild:
-        await bot.process_commands(
-            message
-        )
-        return
-
-    config = adv_guild(
-        message.guild.id
-    )
-
-    # --------------------------------------------------------
-    # XP
-    # --------------------------------------------------------
-
-    if config.get(
-        "xp_enabled",
-        True
-    ):
-        record = sistema_xp_record(
-            message.guild.id,
-            message.author.id
-        )
-
-        record["messages"] = (
-            record.get(
-                "messages",
-                0
-            ) + 1
-        )
-
-        # XP simples por mensagem.
-        gained = max(
-            1,
-            int(
-                config.get(
-                    "xp_per_message",
-                    5
-                )
-            )
-        )
-
-        record["xp"] = (
-            record.get(
-                "xp",
-                0
-            ) + gained
-        )
-
-        leveled = False
-
-        while record["xp"] >= sistema_xp_required(
-            record.get(
-                "level",
-                0
-            )
-        ):
-            record["xp"] -= sistema_xp_required(
-                record.get(
-                    "level",
-                    0
-                )
-            )
-
-            record["level"] = (
-                record.get(
-                    "level",
-                    0
-                ) + 1
-            )
-
-            leveled = True
-
-        if leveled:
-            try:
-                await message.channel.send(
-                    f"⭐ {message.author.mention} "
-                    f"subiu para o nível **{record['level']}**!",
-                    delete_after=8
-                )
-            except Exception:
-                pass
-
-    # --------------------------------------------------------
-    # AUT0MOD
-    # --------------------------------------------------------
-
-    if config.get(
-        "automod_enabled",
-        False
-    ):
-        content = message.content.lower()
-
-        blocked_words = [
-            str(word).lower()
-            for word in config.get(
-                "blocked_words",
-                []
-            )
-        ]
-
-        found_word = next(
-            (
-                word
-                for word in blocked_words
-                if word
-                and word in content
-            ),
-            None
-        )
-
-        if found_word:
-            try:
-                await message.delete()
-
-                await adv_log(
-                    message.guild,
-                    "🤖 AutoMod",
-                    (
-                        f"**Usuário:** {message.author.mention}\n"
-                        f"**Canal:** {message.channel.mention}\n"
-                        f"**Motivo:** palavra bloqueada"
-                    ),
-                    discord.Color.red()
-                )
-            except Exception:
-                pass
-
-    await bot.process_commands(
-        message
-    )
 
 
 # ============================================================
@@ -13034,12 +12317,853 @@ except Exception:
 # ============================================================
 # 🚀 AURA — EXECUÇÃO FINAL
 # ============================================================
+async def _aura_source_on_member_join_1(member):
+    security = security_config(member.guild.id)
+    banned_actors = {int(user_id) for user_id in security.get('banned_actors', [])}
+    if member.id in banned_actors:
+        try:
+            await member.guild.ban(member, reason='Anti-raid: atacante anteriormente banido retornou ao servidor', delete_message_seconds=0)
+        except discord.Forbidden:
+            pass
+        except discord.HTTPException:
+            pass
+        return
+    verification = verification_config(member.guild.id)
+    if verification.get('enabled') and member.bot and (member.id != (bot.user.id if bot.user else 0)) and (member.id not in {int(user_id) for user_id in verification.get('allowed_bots', [])}):
+        try:
+            await member.kick(reason='Bot não autorizado pela verificação padrão')
+            await internal_log('bot bloqueado', f'Bot não autorizado {member} (`{member.id}`) foi expulso.', member.guild, 'ERROR')
+        except discord.HTTPException as error:
+            await internal_log('falha ao bloquear bot', f'Não foi possível expulsar {member} (`{member.id}`): {error}', member.guild, 'ERROR')
+        return
+    autorole_id = guild_settings(member.guild.id).get('autorole_id')
+    autorole = member.guild.get_role(int(autorole_id)) if autorole_id else None
+    if autorole:
+        try:
+            await member.add_roles(autorole, reason='Autorole configurado no servidor')
+        except discord.HTTPException:
+            pass
+    inviter = await identify_inviter(member.guild)
+    inviter_text = inviter.mention if inviter else 'Não identificado (sem permissão para ler convites)'
+    await audit_log(member.guild, 'membros', 'Membro entrou no servidor', member, member.mention)
+    await send_server_event(member.guild, 'welcome_channel_id', '👋 Novo membro no servidor', f'Boas-vindas, {member.mention}!', discord.Color.green(), [('Usuário', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
+    await send_server_event(member.guild, 'invite_channel_id', '📨 Convite utilizado', f'{member.mention} entrou no servidor.', discord.Color.blue(), [('Convidado', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
 
+async def _aura_source_on_member_join_2(member):
+    try:
+        config = adv_guild(
+            member.guild.id
+        )
+
+        # Autorole
+        role_id = config.get(
+            "autorole_id"
+        )
+
+        if role_id:
+            role = member.guild.get_role(
+                int(role_id)
+            )
+
+            if role:
+                try:
+                    await member.add_roles(
+                        role,
+                        reason="Autorole"
+                    )
+                except discord.HTTPException:
+                    pass
+
+        # Boas-vindas
+        channel_id = config.get(
+            "welcome_channel_id"
+        )
+
+        channel = (
+            member.guild.get_channel(
+                int(channel_id)
+            )
+            if channel_id
+            else None
+        )
+
+        if channel:
+            message = config.get(
+                "welcome_message",
+                "🎉 Seja bem-vindo(a), {user}!"
+            )
+
+            message = (
+                message
+                .replace(
+                    "{user}",
+                    member.mention
+                )
+                .replace(
+                    "{username}",
+                    member.display_name
+                )
+                .replace(
+                    "{members}",
+                    str(
+                        member.guild.member_count
+                    )
+                )
+                .replace(
+                    "{server}",
+                    member.guild.name
+                )
+            )
+
+            await channel.send(
+                message
+            )
+
+    except Exception as exc:
+        print(
+            f"[SISTEMAS] Erro on_member_join: {exc!r}"
+        )
+
+@bot.event
+async def on_member_join(member):
+    for _handler_name in ("_aura_source_on_member_join_1", "_aura_source_on_member_join_2"):
+        _handler = globals().get(_handler_name)
+        if callable(_handler):
+            try:
+                await _handler(member)
+            except Exception as _exc:
+                print(f"[AURA EVENT] {_handler_name}: {_exc!r}", flush=True)
+
+async def _aura_source_on_message_1(message):
+    if message.author.bot or not message.guild:
+        return
+    if await process_automod(message):
+        return
+    if protected_channel_matches(message):
+        print(f'[SEGURANCA] Mensagem recebida no canal protegido: {message.author} ({message.author.id})')
+        try:
+            await message.delete(reason='Canal protegido contra contas comprometidas')
+        except discord.Forbidden:
+            delete_error = 'o bot não possui Gerenciar mensagens'
+        except discord.HTTPException as error:
+            delete_error = f'falha ao apagar a mensagem ({error})'
+        except Exception as error:
+            delete_error = f'falha inesperada ao apagar ({type(error).__name__}: {error})'
+            print(f'[SEGURANCA] Erro ao apagar mensagem: {type(error).__name__}: {error}')
+        else:
+            delete_error = 'mensagem apagada'
+        try:
+            banned, result = await ban_protected_author(message)
+        except Exception as error:
+            banned = False
+            result = f'falha inesperada no ban ({type(error).__name__}: {error})'
+            print(f'[SEGURANCA] Erro ao banir autor: {type(error).__name__}: {error}')
+        await audit_log(message.guild, 'seguranca', 'Ação no canal protegido', message.author, f'Canal: {message.channel.mention}; {delete_error}; resultado do ban: {result}')
+        if not banned and result != 'usuário imune':
+            alert = security_config(message.guild.id).get('alert_channel_id')
+            alert_channel = message.guild.get_channel(int(alert)) if alert else message.guild.system_channel
+            if alert_channel:
+                try:
+                    await alert_channel.send(f'⚠️ Ação no canal protegido para {message.author.mention}: {delete_error}; {result}. Verifique as permissões e a posição do cargo do bot.')
+                except discord.HTTPException:
+                    pass
+        return
+    leveled_up, level = grant_message_xp(message.guild.id, message.author.id)
+    if leveled_up:
+        await message.channel.send(f'🎉 {message.author.mention} alcançou o nível **{level}**!', delete_after=10)
+    await bot.process_commands(message)
+
+async def _aura_source_on_message_2(message):
+    if message.author.bot:
+        return
+
+    if not message.guild:
+        await bot.process_commands(
+            message
+        )
+        return
+
+    config = adv_guild(
+        message.guild.id
+    )
+
+    # --------------------------------------------------------
+    # XP
+    # --------------------------------------------------------
+
+    if config.get(
+        "xp_enabled",
+        True
+    ):
+        record = sistema_xp_record(
+            message.guild.id,
+            message.author.id
+        )
+
+        record["messages"] = (
+            record.get(
+                "messages",
+                0
+            ) + 1
+        )
+
+        # XP simples por mensagem.
+        gained = max(
+            1,
+            int(
+                config.get(
+                    "xp_per_message",
+                    5
+                )
+            )
+        )
+
+        record["xp"] = (
+            record.get(
+                "xp",
+                0
+            ) + gained
+        )
+
+        leveled = False
+
+        while record["xp"] >= sistema_xp_required(
+            record.get(
+                "level",
+                0
+            )
+        ):
+            record["xp"] -= sistema_xp_required(
+                record.get(
+                    "level",
+                    0
+                )
+            )
+
+            record["level"] = (
+                record.get(
+                    "level",
+                    0
+                ) + 1
+            )
+
+            leveled = True
+
+        if leveled:
+            try:
+                await message.channel.send(
+                    f"⭐ {message.author.mention} "
+                    f"subiu para o nível **{record['level']}**!",
+                    delete_after=8
+                )
+            except Exception:
+                pass
+
+    # --------------------------------------------------------
+    # AUT0MOD
+    # --------------------------------------------------------
+
+    if config.get(
+        "automod_enabled",
+        False
+    ):
+        content = message.content.lower()
+
+        blocked_words = [
+            str(word).lower()
+            for word in config.get(
+                "blocked_words",
+                []
+            )
+        ]
+
+        found_word = next(
+            (
+                word
+                for word in blocked_words
+                if word
+                and word in content
+            ),
+            None
+        )
+
+        if found_word:
+            try:
+                await message.delete()
+
+                await adv_log(
+                    message.guild,
+                    "🤖 AutoMod",
+                    (
+                        f"**Usuário:** {message.author.mention}\n"
+                        f"**Canal:** {message.channel.mention}\n"
+                        f"**Motivo:** palavra bloqueada"
+                    ),
+                    discord.Color.red()
+                )
+            except Exception:
+                pass
+
+    await bot.process_commands(
+        message
+    )
+
+@bot.event
+async def on_message(message):
+    if getattr(message.author, "bot", False):
+        return
+    if not getattr(message, "guild", None):
+        _secondary = globals().get("_aura_source_on_message_2")
+        if callable(_secondary):
+            await _secondary(message)
+        return
+    _primary = globals().get("_aura_source_on_message_1")
+    _secondary = globals().get("_aura_source_on_message_2")
+    if callable(_primary):
+        await _primary(message)
+    if callable(_secondary):
+        try:
+            await _secondary(message)
+        except Exception as _exc:
+            print(f"[AURA EVENT] secondary on_message: {_exc!r}", flush=True)
+
+
+
+# ============================================================
+# AURA PROFESSIONAL PATCH v4
+# ============================================================
+
+_AURA_PATCH_VERSION = "4.0"
+_AURA_PATCH_VIEW_CACHE = set()
+
+
+def _aura_patch_log(message):
+    try:
+        print(f"[AURA PATCH] {message}", flush=True)
+    except Exception:
+        pass
+
+
+# ------------------------- DATA SAFETY -----------------------
+try:
+    _aura_old_save_data = globals().get("save_data")
+    if callable(_aura_old_save_data) and not getattr(_aura_old_save_data, "_aura_atomic", False):
+        def _aura_atomic_save_data():
+            try:
+                _path = Path(globals().get("DATA_FILE", "ticket_panels.json"))
+                _payload = json.dumps(globals().get("data", {}), indent=2, ensure_ascii=False)
+                _tmp = _path.with_suffix(_path.suffix + ".tmp")
+                _tmp.write_text(_payload, encoding="utf-8")
+                os.replace(_tmp, _path)
+            except Exception as _exc:
+                _aura_patch_log(f"save_data: {_exc!r}")
+        _aura_atomic_save_data._aura_atomic = True
+        globals()["save_data"] = _aura_atomic_save_data
+except Exception as _exc:
+    _aura_patch_log(f"data layer: {_exc!r}")
+
+
+# ------------------------- TICKET SELECT ---------------------
+try:
+    _aura_select_cls = globals().get("T3TypeSelect")
+    _aura_select_original = getattr(_aura_select_cls, "callback", None) if _aura_select_cls else None
+    if callable(_aura_select_original) and not getattr(_aura_select_original, "_aura_reset", False):
+        async def _aura_select_callback(self, interaction):
+            try:
+                return await _aura_select_original(self, interaction)
+            finally:
+                try:
+                    _message = getattr(interaction, "message", None)
+                    _panel_get = globals().get("t3_get_panel")
+                    _panel_view = globals().get("T3PanelView")
+                    if _message and callable(_panel_get) and callable(_panel_view):
+                        _panel = _panel_get(str(getattr(self, "panel_id", "")))
+                        if _panel:
+                            await _message.edit(view=_panel_view(_panel))
+                except Exception as _exc:
+                    _aura_patch_log(f"ticket select reset: {_exc!r}")
+        _aura_select_callback._aura_reset = True
+        _aura_select_cls.callback = _aura_select_callback
+except Exception as _exc:
+    _aura_patch_log(f"ticket select patch: {_exc!r}")
+
+
+# ------------------------- PERSISTENT VIEWS ------------------
+async def _aura_restore_views_safe():
+    try:
+        _bot = globals().get("bot")
+        _load = globals().get("t3_load")
+        _panel_cls = globals().get("T3PanelView")
+        _ticket_cls = globals().get("T3TicketView")
+        if not _bot or not callable(_load):
+            return
+        _data = _load()
+        if callable(_panel_cls):
+            for _panel in _data.get("panels", {}).values():
+                _mid = _panel.get("panel_message_id")
+                if not _mid:
+                    continue
+                _key = ("panel", int(_mid))
+                if _key in _AURA_PATCH_VIEW_CACHE:
+                    continue
+                try:
+                    _bot.add_view(_panel_cls(_panel), message_id=int(_mid))
+                    _AURA_PATCH_VIEW_CACHE.add(_key)
+                except Exception:
+                    pass
+        if callable(_ticket_cls):
+            for _tid, _ticket in _data.get("tickets", {}).items():
+                if _ticket.get("closed"):
+                    continue
+                _mid = _ticket.get("message_id")
+                if not _mid:
+                    continue
+                _key = ("ticket", int(_mid))
+                if _key in _AURA_PATCH_VIEW_CACHE:
+                    continue
+                try:
+                    _bot.add_view(_ticket_cls(str(_tid)), message_id=int(_mid))
+                    _AURA_PATCH_VIEW_CACHE.add(_key)
+                except Exception:
+                    pass
+        for _name in ("VerificationView", "ClockView"):
+            _cls = globals().get(_name)
+            _key = ("global", _name)
+            if callable(_cls) and _key not in _AURA_PATCH_VIEW_CACHE:
+                try:
+                    _bot.add_view(_cls())
+                    _AURA_PATCH_VIEW_CACHE.add(_key)
+                except Exception:
+                    pass
+    except Exception as _exc:
+        _aura_patch_log(f"persistent views: {_exc!r}")
+
+globals()["_aura_restore_persistent_views"] = _aura_restore_views_safe
+
+
+# ------------------------- COMMUNITY XP ----------------------
+async def _aura_extra_xp(message):
+    try:
+        if getattr(message.author, "bot", False) or not getattr(message, "guild", None):
+            return False
+        _adv = globals().get("adv_guild")
+        _record_fn = globals().get("sistema_xp_record")
+        _required = globals().get("sistema_xp_required")
+        if not all(callable(x) for x in (_adv, _record_fn, _required)):
+            return False
+        _cfg = _adv(message.guild.id)
+        if not _cfg.get("xp_enabled", True):
+            return False
+        _record = _record_fn(message.guild.id, message.author.id)
+        _old = int(_record.get("level", 0))
+        _record["messages"] = int(_record.get("messages", 0)) + 1
+        _record["xp"] = int(_record.get("xp", 0)) + max(1, int(_cfg.get("xp_per_message", 5)))
+        while _record["xp"] >= _required(int(_record.get("level", 0))):
+            _record["xp"] -= _required(int(_record.get("level", 0)))
+            _record["level"] = int(_record.get("level", 0)) + 1
+        if int(_record.get("level", 0)) > _old:
+            try:
+                await message.channel.send(
+                    f"⭐ {message.author.mention} subiu para o nível **{_record['level']}**!",
+                    delete_after=8,
+                )
+            except Exception:
+                pass
+        _save = globals().get("save_data")
+        if callable(_save):
+            _save()
+        return True
+    except Exception as _exc:
+        _aura_patch_log(f"extra xp: {_exc!r}")
+        return False
+
+
+# ------------------------- ERROR HANDLING --------------------
+async def _aura_error_handler(interaction, error):
+    try:
+        _metrics = globals().get("_AURA_ENGINE_METRICS")
+        if isinstance(_metrics, dict):
+            _metrics["errors"] = int(_metrics.get("errors", 0)) + 1
+        _err = getattr(error, "original", error)
+        if isinstance(_err, app_commands.MissingPermissions):
+            _message = "❌ Você não possui as permissões necessárias."
+        elif isinstance(_err, app_commands.MissingRole):
+            _message = "❌ Seu cargo não permite usar este comando."
+        elif isinstance(_err, app_commands.CommandOnCooldown):
+            _message = f"⏳ Aguarde {getattr(_err, 'retry_after', 5):.1f}s e tente novamente."
+        elif isinstance(_err, app_commands.TransformerError):
+            _message = "❌ Um dos argumentos informados é inválido."
+        elif isinstance(_err, discord.Forbidden):
+            _message = "❌ O Discord recusou a ação. Verifique as permissões e a hierarquia."
+        else:
+            _message = "❌ O comando falhou, mas o erro foi registrado."
+        if interaction.response.is_done():
+            await interaction.followup.send(_message, ephemeral=True)
+        else:
+            await interaction.response.send_message(_message, ephemeral=True)
+    except Exception:
+        pass
+
+try:
+    bot.tree.on_error = _aura_error_handler
+except Exception:
+    pass
+
+
+# ------------------------- MODERATION HELPERS -----------------
+def _aura_can_target(interaction, member):
+    try:
+        _guild = interaction.guild
+        _actor = interaction.user
+        _me = _guild.me
+        if member.id == _actor.id:
+            return False, "Você não pode agir sobre si mesmo."
+        if member.id == _guild.owner_id:
+            return False, "O dono do servidor não pode ser alvo."
+        if _me and member.top_role >= _me.top_role:
+            return False, "O cargo do alvo está acima ou no mesmo nível do meu cargo."
+        if _actor.id != _guild.owner_id and isinstance(_actor, discord.Member) and member.top_role >= _actor.top_role:
+            return False, "O cargo do alvo está acima ou no mesmo nível do seu cargo."
+        _immune = globals().get("is_immune_user")
+        if callable(_immune) and _immune(member):
+            return False, "Este usuário está protegido pelo sistema."
+        return True, ""
+    except Exception as _exc:
+        return False, f"Falha ao validar hierarquia: {_exc}"
+
+
+def _aura_reason(value):
+    value = str(value or "").strip()
+    return value[:500] or "Sem motivo informado"
+
+
+# ------------------------- /mod --------------------------------
+try:
+    if not any(getattr(x, "name", None) == "mod" for x in bot.tree.get_commands()):
+        _aura_mod_group = app_commands.Group(name="mod", description="Central profissional de moderação.")
+
+        @_aura_mod_group.command(name="ban", description="Bane um membro com validação de hierarquia.")
+        @app_commands.checks.has_permissions(ban_members=True)
+        async def _aura_mod_ban(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
+            ok, msg = _aura_can_target(interaction, membro)
+            if not ok:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            try:
+                await membro.ban(reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
+                await interaction.response.send_message(f"🔨 {membro.mention} foi banido.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Não foi possível banir: permissão/hierarquia insuficiente.", ephemeral=True)
+            except discord.HTTPException as exc:
+                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
+
+        @_aura_mod_group.command(name="kick", description="Expulsa um membro com validação de hierarquia.")
+        @app_commands.checks.has_permissions(kick_members=True)
+        async def _aura_mod_kick(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
+            ok, msg = _aura_can_target(interaction, membro)
+            if not ok:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            try:
+                await membro.kick(reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
+                await interaction.response.send_message(f"👢 {membro.mention} foi expulso.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Não foi possível expulsar: permissão/hierarquia insuficiente.", ephemeral=True)
+            except discord.HTTPException as exc:
+                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
+
+        @_aura_mod_group.command(name="timeout", description="Aplica timeout temporário.")
+        @app_commands.checks.has_permissions(moderate_members=True)
+        async def _aura_mod_timeout(interaction, membro: discord.Member, minutos: app_commands.Range[int, 1, 40320], motivo: str = "Sem motivo informado"):
+            ok, msg = _aura_can_target(interaction, membro)
+            if not ok:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            try:
+                await membro.timeout(timedelta(minutes=int(minutos)), reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
+                await interaction.response.send_message(f"⏱️ {membro.mention} recebeu timeout por **{minutos} min**.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Não foi possível aplicar o timeout.", ephemeral=True)
+            except discord.HTTPException as exc:
+                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
+
+        @_aura_mod_group.command(name="warn", description="Adverte e registra um membro.")
+        @app_commands.checks.has_permissions(moderate_members=True)
+        async def _aura_mod_warn(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
+            ok, msg = _aura_can_target(interaction, membro)
+            if not ok:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            _add = globals().get("add_warning")
+            _save = globals().get("save_data")
+            if not callable(_add):
+                return await interaction.response.send_message("❌ Sistema de advertências indisponível.", ephemeral=True)
+            _total = _add(interaction.guild.id, membro.id, interaction.user.id, _aura_reason(motivo))
+            if callable(_save):
+                _save()
+            await interaction.response.send_message(f"⚠️ {membro.mention} recebeu uma advertência. Total: **{_total}**.", ephemeral=True)
+
+        @_aura_mod_group.command(name="clear", description="Apaga de 1 a 100 mensagens.")
+        @app_commands.checks.has_permissions(manage_messages=True)
+        async def _aura_mod_clear(interaction, quantidade: app_commands.Range[int, 1, 100]):
+            await interaction.response.defer(ephemeral=True)
+            try:
+                deleted = await interaction.channel.purge(limit=int(quantidade))
+            except discord.Forbidden:
+                return await interaction.followup.send("❌ Não tenho permissão para apagar mensagens.", ephemeral=True)
+            except discord.HTTPException as exc:
+                return await interaction.followup.send(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
+            await interaction.followup.send(f"🧹 **{len(deleted)}** mensagens apagadas.", ephemeral=True)
+
+        @_aura_mod_group.command(name="lock", description="Tranca o canal atual.")
+        @app_commands.checks.has_permissions(manage_channels=True)
+        async def _aura_mod_lock(interaction, motivo: str = "Canal trancado pela moderação"):
+            try:
+                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False, reason=_aura_reason(motivo))
+            except discord.Forbidden:
+                return await interaction.response.send_message("❌ Não tenho permissão para trancar este canal.", ephemeral=True)
+            await interaction.response.send_message("🔒 Canal trancado.", ephemeral=True)
+
+        @_aura_mod_group.command(name="unlock", description="Destranca o canal atual.")
+        @app_commands.checks.has_permissions(manage_channels=True)
+        async def _aura_mod_unlock(interaction):
+            try:
+                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=None, reason=f"Destrancado por {interaction.user}")
+            except discord.Forbidden:
+                return await interaction.response.send_message("❌ Não tenho permissão para destrancar este canal.", ephemeral=True)
+            await interaction.response.send_message("🔓 Canal destrancado.", ephemeral=True)
+
+        bot.tree.add_command(_aura_mod_group)
+except Exception as _exc:
+    _aura_patch_log(f"/mod: {_exc!r}")
+
+
+# ------------------------- /comunidade -----------------------
+try:
+    if not any(getattr(x, "name", None) == "comunidade" for x in bot.tree.get_commands()):
+        _aura_com_group = app_commands.Group(name="comunidade", description="Ferramentas profissionais da comunidade.")
+
+        @_aura_com_group.command(name="anuncio", description="Publica um anúncio visual.")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        async def _aura_com_anuncio(interaction, canal: discord.TextChannel, titulo: str, mensagem: str, cor: str = "D4AF37", imagem: str | None = None):
+            hx = str(cor).replace("#", "").strip()
+            if not re.fullmatch(r"[0-9A-Fa-f]{6}", hx):
+                return await interaction.response.send_message("❌ Cor inválida. Exemplo: `D4AF37`.", ephemeral=True)
+            embed = discord.Embed(title=titulo[:256], description=mensagem[:4096], color=int(hx, 16), timestamp=datetime.now(timezone.utc))
+            if interaction.guild.icon:
+                embed.set_author(name=f"Anúncio de {interaction.guild.name}", icon_url=interaction.guild.icon.url)
+            if imagem:
+                embed.set_image(url=imagem)
+            try:
+                await canal.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except discord.Forbidden:
+                return await interaction.response.send_message("❌ Não tenho permissão para publicar nesse canal.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Anúncio enviado em {canal.mention}.", ephemeral=True)
+
+        @_aura_com_group.command(name="embed", description="Cria uma embed completa sem editar código.")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        async def _aura_com_embed(interaction, titulo: str, descricao: str, canal: discord.TextChannel | None = None, cor: str = "D4AF37", imagem: str | None = None, thumbnail: str | None = None, rodape: str | None = None, autor: str | None = None):
+            hx = str(cor).replace("#", "").strip()
+            if not re.fullmatch(r"[0-9A-Fa-f]{6}", hx):
+                return await interaction.response.send_message("❌ Cor inválida. Exemplo: `5865F2`.", ephemeral=True)
+            canal = canal or interaction.channel
+            embed = discord.Embed(title=titulo[:256], description=descricao[:4096], color=int(hx, 16), timestamp=datetime.now(timezone.utc))
+            if imagem: embed.set_image(url=imagem)
+            if thumbnail: embed.set_thumbnail(url=thumbnail)
+            if autor: embed.set_author(name=autor[:256])
+            if rodape: embed.set_footer(text=rodape[:2048])
+            try:
+                await canal.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except discord.Forbidden:
+                return await interaction.response.send_message("❌ Não tenho permissão para publicar nesse canal.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Embed publicada em {canal.mention}.", ephemeral=True)
+
+        @_aura_com_group.command(name="slowmode", description="Configura o modo lento do canal.")
+        @app_commands.checks.has_permissions(manage_channels=True)
+        async def _aura_com_slowmode(interaction, segundos: app_commands.Range[int, 0, 21600], canal: discord.TextChannel | None = None):
+            canal = canal or interaction.channel
+            try:
+                await canal.edit(slowmode_delay=int(segundos), reason=f"Slowmode por {interaction.user}")
+            except discord.Forbidden:
+                return await interaction.response.send_message("❌ Não tenho permissão para alterar o slowmode.", ephemeral=True)
+            await interaction.response.send_message(f"🐢 Slowmode de {canal.mention}: **{segundos}s**.", ephemeral=True)
+
+        @_aura_com_group.command(name="sugestao", description="Envia uma sugestão para o canal configurado.")
+        async def _aura_com_sugestao(interaction, texto: str):
+            _settings = globals().get("guild_settings")
+            if not callable(_settings):
+                return await interaction.response.send_message("❌ Configurações indisponíveis.", ephemeral=True)
+            _cid = _settings(interaction.guild.id).get("suggestion_channel_id")
+            _channel = interaction.guild.get_channel(int(_cid)) if _cid else None
+            if not isinstance(_channel, discord.TextChannel):
+                return await interaction.response.send_message("❌ Configure primeiro o canal de sugestões.", ephemeral=True)
+            embed = discord.Embed(title="💡 Nova sugestão", description=texto[:4000], color=discord.Color.gold(), timestamp=datetime.now(timezone.utc))
+            embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+            try:
+                msg = await _channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                await msg.add_reaction("✅")
+                await msg.add_reaction("❌")
+            except discord.HTTPException:
+                return await interaction.response.send_message("❌ Não foi possível publicar a sugestão.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Sugestão enviada em {_channel.mention}.", ephemeral=True)
+
+        @_aura_com_group.command(name="enquete", description="Cria uma enquete com o sistema de votação existente.")
+        @app_commands.checks.has_permissions(manage_guild=True)
+        async def _aura_com_enquete(interaction, pergunta: str, opcao_a: str, opcao_b: str, opcao_c: str | None = None, opcao_d: str | None = None, opcao_e: str | None = None):
+            _options = [str(x)[:80] for x in (opcao_a, opcao_b, opcao_c, opcao_d, opcao_e) if x]
+            if len(_options) < 2:
+                return await interaction.response.send_message("❌ Informe pelo menos duas opções.", ephemeral=True)
+            if len({x.casefold() for x in _options}) != len(_options):
+                return await interaction.response.send_message("❌ As opções precisam ser diferentes.", ephemeral=True)
+            _polls = globals().get("data", {}).get("polls", {})
+            _view = globals().get("PollView")
+            _make_embed = globals().get("poll_embed")
+            _save = globals().get("save_data")
+            if not isinstance(_polls, dict) or not callable(_view):
+                return await interaction.response.send_message("❌ Sistema de enquetes indisponível.", ephemeral=True)
+            _poll_id = os.urandom(6).hex()
+            _poll = {"guild_id": interaction.guild.id, "channel_id": interaction.channel.id, "message_id": None, "creator_id": interaction.user.id, "question": str(pergunta)[:256], "options": _options, "votes": {}, "open": True}
+            _polls[_poll_id] = _poll
+            if callable(_save):
+                _save()
+            _embed = _make_embed(_poll) if callable(_make_embed) else discord.Embed(title="📊 Enquete", description=f"**{pergunta[:256]}**", color=discord.Color.gold())
+            await interaction.response.send_message(embed=_embed, view=_view(_poll_id))
+            try:
+                _msg = await interaction.original_response()
+                _poll["message_id"] = _msg.id
+                if callable(_save):
+                    _save()
+            except Exception:
+                pass
+
+        bot.tree.add_command(_aura_com_group)
+except Exception as _exc:
+    _aura_patch_log(f"/comunidade: {_exc!r}")
+
+
+# ------------------------- PROFESSIONAL COMMANDS ------------
+try:
+    def _aura_embed(title, description=""):
+        return discord.Embed(title=title, description=description, color=discord.Color(0xD4AF37), timestamp=datetime.now(timezone.utc))
+
+    # Replace risky/obsolete hard-coded root commands where present.
+    for _root_name in ("status", "comandos", "reiniciar"):
+        try:
+            bot.tree.remove_command(_root_name)
+        except Exception:
+            pass
+
+    @bot.tree.command(name="status", description="Mostra o estado operacional do bot.")
+    async def _aura_status(interaction):
+        _e = _aura_embed("🟡 Status operacional", "Visão geral da instância.")
+        _e.add_field(name="🏠 Servidores", value=str(len(bot.guilds)), inline=True)
+        _e.add_field(name="📡 Latência", value=f"{bot.latency * 1000:.0f} ms", inline=True)
+        _e.add_field(name="👥 Usuários", value=str(sum((g.member_count or 0) for g in bot.guilds)), inline=True)
+        _metrics = globals().get("_AURA_ENGINE_METRICS", {})
+        _e.add_field(name="⚡ Execuções", value=str(_metrics.get("commands", 0)), inline=True)
+        _e.add_field(name="🚨 Erros", value=str(_metrics.get("errors", 0)), inline=True)
+        await interaction.response.send_message(embed=_e, ephemeral=True)
+
+    @bot.tree.command(name="comandos", description="Lista os comandos e sistemas carregados.")
+    async def _aura_commands(interaction):
+        _items = []
+        for _cmd in sorted(bot.tree.get_commands(), key=lambda c: str(getattr(c, "name", "")).casefold()):
+            _subs = getattr(_cmd, "commands", []) or []
+            if _subs:
+                _items.append(f"`/{_cmd.name}` — {_cmd.description or 'grupo'} · **{len(_subs)}** subcomandos")
+            else:
+                _items.append(f"`/{_cmd.name}` — {_cmd.description or 'comando'}")
+        _e = _aura_embed("🧩 Catálogo de comandos", f"Entradas principais: **{len(bot.tree.get_commands())}**")
+        _e.add_field(name="Comandos", value="\n".join(_items)[:3900] or "Nenhum", inline=False)
+        await interaction.response.send_message(embed=_e, ephemeral=True)
+
+    @bot.tree.command(name="ajuda", description="Abre a central rápida de ajuda.")
+    async def _aura_help(interaction):
+        _e = _aura_embed(
+            "📚 Central de ajuda",
+            "Use os blocos abaixo para encontrar cada sistema do bot.\n\n"
+            "🎫 `/ticket ...`\n"
+            "💰 `/economia ...`\n"
+            "⏱️ `/ponto ...`\n"
+            "🛡️ `/seguranca ...`\n"
+            "🎮 `/diversao ...`\n"
+            "🛠️ `/mod ...`\n"
+            "🏆 `/comunidade ...`\n"
+            "⚙️ `/central painel`",
+        )
+        await interaction.response.send_message(embed=_e, ephemeral=True)
+
+    @bot.tree.command(name="reiniciar", description="Reinicia a instância do bot.")
+    async def _aura_restart(interaction):
+        _owner = getattr(getattr(bot, "application", None), "owner", None)
+        _allowed = bool(_owner and _owner.id == interaction.user.id)
+        if interaction.guild and not _allowed:
+            _allowed = interaction.user.id == interaction.guild.owner_id
+        if not _allowed:
+            return await interaction.response.send_message("❌ Você não está autorizado a reiniciar o bot.", ephemeral=True)
+        await interaction.response.send_message("♻️ Reiniciando...", ephemeral=True)
+        await asyncio.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+except Exception as _exc:
+    _aura_patch_log(f"root commands: {_exc!r}")
+
+
+# ------------------------- CENTRAL EXTRAS --------------------
+try:
+    _central = globals().get("_aura_central_group")
+    if _central is not None and not any(getattr(x, "name", None) == "sistemas" for x in getattr(_central, "commands", [])):
+        @_central.command(name="sistemas", description="Mostra o estado dos principais módulos.")
+        @app_commands.checks.has_permissions(administrator=True)
+        async def _aura_central_sistemas(interaction):
+            _e = _aura_embed("🧩 Sistemas carregados", "Estado rápido dos módulos principais.")
+            _checks = [
+                ("🎫 Tickets", "t3_load"),
+                ("💰 Economia", "wallet"),
+                ("🎉 Sorteios", "finish_giveaway"),
+                ("🛡️ Segurança", "security_config"),
+                ("⏱️ Ponto", "guild_clock"),
+                ("✅ Verificação", "verification_config"),
+                ("⭐ XP", "level_record"),
+                ("🤖 AutoMod", "process_automod"),
+            ]
+            for _label, _name in _checks:
+                _e.add_field(name=_label, value="🟢 Carregado" if callable(globals().get(_name)) else "🔴 Indisponível", inline=True)
+            await interaction.response.send_message(embed=_e, ephemeral=True)
+
+        @_central.command(name="reparar", description="Executa reparos não destrutivos.")
+        @app_commands.checks.has_permissions(administrator=True)
+        async def _aura_central_reparar(interaction):
+            await interaction.response.defer(ephemeral=True)
+            _messages = []
+            try:
+                await _aura_restore_views_safe(); _messages.append("Views persistentes verificadas")
+            except Exception as _exc:
+                _messages.append(f"Views: {_exc}")
+            try:
+                _save = globals().get("save_data")
+                if callable(_save): _save()
+                _messages.append("Banco principal validado")
+            except Exception as _exc:
+                _messages.append(f"Banco: {_exc}")
+            await interaction.followup.send("🛠️ **Reparo concluído**\n" + "\n".join(f"• {x}" for x in _messages), ephemeral=True)
+except Exception as _exc:
+    _aura_patch_log(f"central extras: {_exc!r}")
+
+
+# ------------------------- SYNC ONCE --------------------------
+try:
+    _old_setup = globals().get("_aura_professional_setup_hook")
+    if callable(_old_setup) and not getattr(_old_setup, "_aura_once", False):
+        async def _aura_setup_once():
+            await _old_setup()
+            globals()["commands_synced"] = True
+            await _aura_restore_views_safe()
+        _aura_setup_once._aura_once = True
+        bot.setup_hook = _aura_setup_once
+except Exception:
+    pass
+
+
+# ------------------------- FINAL LAUNCHER ---------------------
 if __name__ == "__main__":
-    # O host fornece DISCORD_TOKEN e qualquer outra variável já existente.
-    # O atualizador não solicita nem armazena credenciais.
-    _aura_host_token = os.getenv("DISCORD_TOKEN")
-    if not _aura_host_token:
-        # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
+    _token = os.getenv("DISCORD_TOKEN")
+    if not _token:
         raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
-    bot.run(_aura_host_token)
+    bot.run(_token)
