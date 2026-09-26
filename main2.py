@@ -6,6 +6,7 @@ import io
 import json
 import os
 import random
+import secrets
 import re
 import shutil
 import sys
@@ -29,2038 +30,704 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
-# ============================================================
-# 🎫 AURA TICKETS V5
-# ============================================================
-
-from pathlib import Path
-from datetime import datetime, timezone
-import json
-import re
-import secrets
-
-import discord
-from discord import app_commands
-
 
 # ============================================================
-# BANCO
+# AURA 12 CONSOLIDATED CORE - BEGIN
 # ============================================================
 
-T3_FILE = Path("tickets_v3.json")
-T3_VERSION = 5
+# Este bloco foi criado para complementar o sistema existente.
+# Ele não substitui os comandos antigos.
+#
+# Não depende de OpenSSL.
+# Não possui token.
+# Não altera variáveis de ambiente do host.
+
+AURA12_FILE = Path("aura12_core.json")
 
 
-def t3_now():
-    return datetime.now(timezone.utc)
-
-
-def t3_iso():
-    return t3_now().isoformat()
-
-
-def t3_id(size=5):
-    return secrets.token_hex(size)
-
-
-def t3_default():
+def aura12_default():
     return {
-        "version": T3_VERSION,
-        "panels": {},
-        "tickets": {},
-        "stats": {},
-        "evaluations": {}
+        "version": 12,
+        "guilds": {},
+        "users": {},
+        "cooldowns": {},
+        "maintenance": {},
     }
 
 
-def t3_save(data):
+def aura12_load():
+    if not AURA12_FILE.exists():
+        return aura12_default()
 
     try:
-
-        temp = T3_FILE.with_suffix(".tmp")
-
-        temp.write_text(
-            json.dumps(
-                data,
-                ensure_ascii=False,
-                indent=2
-            ),
+        raw = AURA12_FILE.read_text(
             encoding="utf-8"
         )
 
-        temp.replace(T3_FILE)
+        data = json.loads(raw)
 
-    except Exception as exc:
+        if not isinstance(data, dict):
+            return aura12_default()
 
-        print(
-            f"[TICKET] Erro ao salvar banco: {exc}"
-        )
+        base = aura12_default()
 
+        for key, value in data.items():
+            base[key] = value
 
-def t3_create_type(
-    name="Suporte",
-    description="Preciso de ajuda.",
-    emoji="🎫"
-):
+        if not isinstance(base.get("guilds"), dict):
+            base["guilds"] = {}
 
-    return {
-        "id": t3_id(4),
+        if not isinstance(base.get("users"), dict):
+            base["users"] = {}
 
-        "name": str(name)[:80],
+        if not isinstance(base.get("cooldowns"), dict):
+            base["cooldowns"] = {}
 
-        "description": str(
-            description
-        )[:100],
-
-        "emoji": str(
-            emoji or "🎫"
-        )[:20],
-
-        # ====================================================
-        # O MODO NÃO FICA NO TIPO.
-        # ====================================================
-
-        "department": str(name)[:80],
-
-        "priority": "normal",
-
-        "tags": [],
-
-        "max_open": 1,
-
-        "cooldown_seconds": 0,
-
-        "transcript": True,
-
-        "evaluation": True,
-
-        "mention_user": True,
-
-        "mention_staff": True,
-
-        "allow_user_close": True,
-
-        "form": [],
-
-        "close_reasons": [
-            "Resolvido",
-            "Usuário não respondeu",
-            "Duplicado",
-            "Encaminhado",
-            "Outro"
-        ]
-    }
-
-
-def t3_create_panel(guild):
-
-    return {
-        "id": t3_id(),
-
-        "guild_id": guild.id,
-
-        "guild_name": guild.name,
-
-        "name": "Central de Atendimento",
-
-        "description": (
-            "Selecione abaixo o tipo de "
-            "atendimento que você deseja abrir."
-        ),
-
-        "color": "5865F2",
-
-        "thumbnail_url": None,
-
-        "image_url": None,
-
-        "footer": "Sistema de Tickets • Aura",
-
-        # ====================================================
-        # MODO PERTENCE AO PAINEL.
-        # ====================================================
-
-        "mode": "channel",
-
-        "category_id": None,
-
-        "staff_role_id": None,
-
-        "log_channel_id": None,
-
-        "panel_channel_id": None,
-
-        "panel_message_id": None,
-
-        "max_open_per_user": 1,
-
-        "types": []
-    }
-
-
-def t3_load():
-
-    if not T3_FILE.exists():
-
-        return t3_default()
-
-    try:
-
-        data = json.loads(
-            T3_FILE.read_text(
-                encoding="utf-8"
-            )
-        )
-
-        if not isinstance(
-            data,
-            dict
-        ):
-
-            return t3_default()
-
-        base = t3_default()
-
-        base.update(data)
-
-        if not isinstance(
-            base.get("panels"),
-            dict
-        ):
-
-            base["panels"] = {}
-
-        if not isinstance(
-            base.get("tickets"),
-            dict
-        ):
-
-            base["tickets"] = {}
-
-        if not isinstance(
-            base.get("stats"),
-            dict
-        ):
-
-            base["stats"] = {}
-
-        if not isinstance(
-            base.get("evaluations"),
-            dict
-        ):
-
-            base["evaluations"] = {}
-
-        # ====================================================
-        # MIGRAÇÃO DOS PAINÉIS
-        # ====================================================
-
-        for panel in base["panels"].values():
-
-            if not isinstance(
-                panel,
-                dict
-            ):
-
-                continue
-
-            panel.setdefault(
-                "name",
-                "Central de Atendimento"
-            )
-
-            panel.setdefault(
-                "description",
-                "Selecione o tipo de atendimento."
-            )
-
-            panel.setdefault(
-                "guild_name",
-                ""
-            )
-
-            panel.setdefault(
-                "color",
-                "5865F2"
-            )
-
-            panel.setdefault(
-                "thumbnail_url",
-                None
-            )
-
-            panel.setdefault(
-                "image_url",
-                None
-            )
-
-            panel.setdefault(
-                "footer",
-                "Sistema de Tickets • Aura"
-            )
-
-            # =================================================
-            # MIGRAR MODE ANTIGO
-            # =================================================
-
-            if "mode" not in panel:
-
-                panel["mode"] = panel.get(
-                    "default_mode",
-                    "channel"
-                )
-
-            panel.setdefault(
-                "category_id",
-                panel.get(
-                    "default_category_id"
-                )
-            )
-
-            panel.setdefault(
-                "staff_role_id",
-                panel.get(
-                    "default_staff_role_id"
-                )
-            )
-
-            panel.setdefault(
-                "log_channel_id",
-                None
-            )
-
-            panel.setdefault(
-                "panel_channel_id",
-                None
-            )
-
-            panel.setdefault(
-                "panel_message_id",
-                None
-            )
-
-            panel.setdefault(
-                "max_open_per_user",
-                1
-            )
-
-            if not isinstance(
-                panel.get("types"),
-                list
-            ):
-
-                panel["types"] = []
-
-            # =================================================
-            # MIGRAR TIPOS
-            # =================================================
-
-            for ticket_type in panel["types"]:
-
-                if not isinstance(
-                    ticket_type,
-                    dict
-                ):
-
-                    continue
-
-                defaults = t3_create_type()
-
-                for key, value in defaults.items():
-
-                    if key not in ticket_type:
-
-                        if isinstance(
-                            value,
-                            list
-                        ):
-
-                            ticket_type[key] = list(
-                                value
-                            )
-
-                        elif isinstance(
-                            value,
-                            dict
-                        ):
-
-                            ticket_type[key] = dict(
-                                value
-                            )
-
-                        else:
-
-                            ticket_type[key] = value
-
-                # =================================================
-                # REMOVER CONFIGURAÇÃO DE MODO DOS TIPOS
-                # =================================================
-
-                ticket_type.pop(
-                    "mode",
-                    None
-                )
-
-                ticket_type.pop(
-                    "thread_type",
-                    None
-                )
-
-                ticket_type.pop(
-                    "thread_archive",
-                    None
-                )
-
-                ticket_type.pop(
-                    "category_id",
-                    None
-                )
-
-                ticket_type.pop(
-                    "staff_role_id",
-                    None
-                )
-
-        base["version"] = T3_VERSION
+        if not isinstance(base.get("maintenance"), dict):
+            base["maintenance"] = {}
 
         return base
 
     except Exception as exc:
-
         print(
-            f"[TICKET] Banco inválido: {exc}"
+            f"[AURA12] Erro ao carregar banco: {exc!r}"
         )
 
-        return t3_default()
+        return aura12_default()
 
 
-def t3_get_panel(panel_id):
+AURA12_DATA = aura12_load()
 
-    data = t3_load()
 
-    return data["panels"].get(
-        str(panel_id)
+def aura12_save():
+    temporary = AURA12_FILE.with_suffix(
+        ".tmp"
+    )
+
+    temporary.write_text(
+        json.dumps(
+            AURA12_DATA,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    temporary.replace(
+        AURA12_FILE
     )
 
 
-def t3_get_type(
-    panel,
-    type_id
-):
+def aura12_guild(guild_id):
+    guild_id = str(guild_id)
 
-    if not panel:
-        return None
+    record = AURA12_DATA["guilds"].setdefault(
+        guild_id,
+        {},
+    )
 
-    for item in panel.get(
-        "types",
-        []
-    ):
+    record.setdefault(
+        "ticket_enabled",
+        True,
+    )
 
-        if str(
-            item.get("id")
-        ) == str(type_id):
+    record.setdefault(
+        "automod_enabled",
+        False,
+    )
 
-            return item
+    record.setdefault(
+        "welcome_enabled",
+        False,
+    )
 
-    return None
+    record.setdefault(
+        "autorole_enabled",
+        False,
+    )
+
+    record.setdefault(
+        "verification_enabled",
+        False,
+    )
+
+    record.setdefault(
+        "anti_raid_enabled",
+        False,
+    )
+
+    record.setdefault(
+        "bot_whitelist",
+        [],
+    )
+
+    record.setdefault(
+        "ticket_allow_bots",
+        False,
+    )
+
+    record.setdefault(
+        "ticket_max_open",
+        1,
+    )
+
+    record.setdefault(
+        "ticket_log_channel",
+        None,
+    )
+
+    record.setdefault(
+        "welcome_channel",
+        None,
+    )
+
+    record.setdefault(
+        "welcome_message",
+        "👋 Seja bem-vindo(a), {user}!",
+    )
+
+    record.setdefault(
+        "autorole_id",
+        None,
+    )
+
+    record.setdefault(
+        "verification_role_id",
+        None,
+    )
+
+    record.setdefault(
+        "verification_channel",
+        None,
+    )
+
+    record.setdefault(
+        "starboard_channel",
+        None,
+    )
+
+    record.setdefault(
+        "starboard_threshold",
+        3,
+    )
+
+    return record
 
 
-def t3_open_tickets(
+def aura12_user(guild_id, user_id):
+    key = f"{guild_id}:{user_id}"
+
+    record = AURA12_DATA["users"].setdefault(
+        key,
+        {},
+    )
+
+    record.setdefault(
+        "tickets_created",
+        0,
+    )
+
+    record.setdefault(
+        "tickets_closed",
+        0,
+    )
+
+    record.setdefault(
+        "warnings",
+        0,
+    )
+
+    record.setdefault(
+        "xp",
+        0,
+    )
+
+    record.setdefault(
+        "level",
+        0,
+    )
+
+    record.setdefault(
+        "points",
+        0,
+    )
+
+    return record
+
+
+def aura12_is_whitelisted_bot(
     guild_id,
-    user_id=None
+    user_id,
 ):
+    config = aura12_guild(
+        guild_id
+    )
 
-    data = t3_load()
-
-    result = []
-
-    for ticket in data["tickets"].values():
-
-        if str(
-            ticket.get("guild_id")
-        ) != str(guild_id):
-
-            continue
-
-        if user_id is not None:
-
-            if str(
-                ticket.get("owner_id")
-            ) != str(user_id):
-
-                continue
-
-        if ticket.get("closed"):
-
-            continue
-
-        result.append(ticket)
-
-    return result
+    return int(user_id) in {
+        int(value)
+        for value in config.get(
+            "bot_whitelist",
+            [],
+        )
+    }
 
 
-def t3_current_ticket(
-    interaction
+def aura12_ticket_bots_allowed(
+    guild_id,
 ):
+    return bool(
+        aura12_guild(
+            guild_id
+        ).get(
+            "ticket_allow_bots",
+            False,
+        )
+    )
 
+
+def aura12_permission(
+    interaction,
+    administrator=False,
+):
     if not interaction.guild:
-        return None
-
-    channel_id = getattr(
-        interaction.channel,
-        "id",
-        None
-    )
-
-    if not channel_id:
-        return None
-
-    data = t3_load()
-
-    for ticket in data["tickets"].values():
-
-        if str(
-            ticket.get("guild_id")
-        ) != str(
-            interaction.guild.id
-        ):
-
-            continue
-
-        if str(
-            ticket.get("channel_id")
-        ) != str(channel_id):
-
-            continue
-
-        return ticket
-
-    return None
-
-
-def t3_clean_name(
-    value,
-    fallback="ticket"
-):
-
-    value = str(
-        value or ""
-    ).lower()
-
-    value = re.sub(
-        r"[^a-z0-9áéíóúãõâêôç _-]",
-        "",
-        value
-    )
-
-    value = re.sub(
-        r"\s+",
-        "-",
-        value
-    )
-
-    value = re.sub(
-        r"-+",
-        "-",
-        value
-    )
-
-    value = value.strip("-")
-
-    return (
-        value[:90]
-        or fallback
-    )
-
-
-def t3_color(value):
-
-    value = str(
-        value or ""
-    )
-
-    value = value.replace(
-        "#",
-        ""
-    )
-
-    value = value.strip()
-
-    if not re.fullmatch(
-        r"[0-9a-fA-F]{6}",
-        value
-    ):
-
-        value = "5865F2"
-
-    return discord.Color(
-        int(
-            value,
-            16
-        )
-    )
-
-
-# ============================================================
-# EMBED DO PAINEL
-# ============================================================
-
-def t3_panel_embed(
-    panel
-):
-
-    embed = discord.Embed(
-        title=panel.get(
-            "name",
-            "Central de Atendimento"
-        ),
-        description=panel.get(
-            "description",
-            "Selecione o atendimento desejado."
-        ),
-        color=t3_color(
-            panel.get(
-                "color",
-                "5865F2"
-            )
-        )
-    )
-
-    if panel.get(
-        "thumbnail_url"
-    ):
-
-        embed.set_thumbnail(
-            url=panel[
-                "thumbnail_url"
-            ]
-        )
-
-    if panel.get(
-        "image_url"
-    ):
-
-        embed.set_image(
-            url=panel[
-                "image_url"
-            ]
-        )
-
-    if panel.get(
-        "footer"
-    ):
-
-        embed.set_footer(
-            text=panel[
-                "footer"
-            ]
-        )
-
-    return embed
-
-
-# ============================================================
-# EMBED DO TICKET
-# ============================================================
-
-def t3_ticket_embed(
-    ticket,
-    panel,
-    ticket_type
-):
-
-    embed = discord.Embed(
-        title=(
-            "🎫 "
-            + str(
-                ticket_type.get(
-                    "name",
-                    "Atendimento"
-                )
-            )
-        ),
-        description=(
-            "Seu atendimento foi criado.\n"
-            "A equipe responsável irá responder em breve."
-        ),
-        color=t3_color(
-            panel.get(
-                "color",
-                "5865F2"
-            )
-        )
-    )
-
-    embed.add_field(
-        name="👤 Usuário",
-        value=(
-            f"<@{ticket.get('owner_id')}>"
-        ),
-        inline=True
-    )
-
-    embed.add_field(
-        name="🏷️ Tipo",
-        value=str(
-            ticket_type.get(
-                "name",
-                "Suporte"
-            )
-        ),
-        inline=True
-    )
-
-    embed.add_field(
-        name="⚡ Prioridade",
-        value=str(
-            ticket.get(
-                "priority",
-                "normal"
-            )
-        ).title(),
-        inline=True
-    )
-
-    embed.add_field(
-        name="🆔 Ticket",
-        value=(
-            f"`{ticket.get('id')}`"
-        ),
-        inline=False
-    )
-
-    if ticket.get(
-        "claimed_by"
-    ):
-
-        embed.add_field(
-            name="👨‍💼 Atendente",
-            value=(
-                f"<@{ticket['claimed_by']}>"
-            ),
-            inline=True
-        )
-
-    answers = ticket.get(
-        "form_answers",
-        {}
-    )
-
-    if answers:
-
-        text = ""
-
-        for key, value in answers.items():
-
-            text += (
-                f"**{key}:** {value}\n"
-            )
-
-        if len(text) > 1000:
-
-            text = (
-                text[:997]
-                + "..."
-            )
-
-        embed.add_field(
-            name="📋 Formulário",
-            value=text,
-            inline=False
-        )
-
-    if panel.get(
-        "footer"
-    ):
-
-        embed.set_footer(
-            text=panel[
-                "footer"
-            ]
-        )
-
-    return embed
-
-
-# ============================================================
-# BOTÕES DO TICKET
-# ============================================================
-
-class T3TicketView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        ticket_id
-    ):
-
-        super().__init__(
-            timeout=None
-        )
-
-        self.ticket_id = str(
-            ticket_id
-        )
-
-    def _get_ticket(
-        self
-    ):
-
-        data = t3_load()
-
-        return data["tickets"].get(
-            self.ticket_id
-        )
-
-    def _staff(
-        self,
-        interaction
-    ):
-
-        ticket = self._get_ticket()
-
-        if not ticket:
-            return False
-
-        if interaction.user.guild_permissions.administrator:
-            return True
-
-        role_id = ticket.get(
-            "staff_role_id"
-        )
-
-        if not role_id:
-            return False
-
-        try:
-
-            role = interaction.guild.get_role(
-                int(role_id)
-            )
-
-            if role and role in interaction.user.roles:
-                return True
-
-        except Exception:
-            pass
-
         return False
 
-    @discord.ui.button(
-        label="Assumir",
-        emoji="👤",
-        style=discord.ButtonStyle.primary,
-        custom_id="aura_ticket_claim"
-    )
-    async def claim(
-        self,
-        interaction,
-        button
+    member = interaction.user
+
+    if getattr(
+        member.guild_permissions,
+        "administrator",
+        False,
     ):
-
-        ticket = self._get_ticket()
-
-        if not ticket:
-
-            await interaction.response.send_message(
-                "❌ Ticket não encontrado.",
-                ephemeral=True
-            )
-
-            return
-
-        if not self._staff(
-            interaction
-        ):
-
-            await interaction.response.send_message(
-                "❌ Você não possui permissão para assumir tickets.",
-                ephemeral=True
-            )
-
-            return
-
-        ticket[
-            "claimed_by"
-        ] = interaction.user.id
-
-        data = t3_load()
-
-        data["tickets"][
-            self.ticket_id
-        ] = ticket
-
-        t3_save(
-            data
-        )
-
-        await interaction.response.send_message(
-            (
-                "👤 Ticket assumido por "
-                + interaction.user.mention
-                + "."
-            )
-        )
-
-    @discord.ui.button(
-        label="Prioridade",
-        emoji="⚡",
-        style=discord.ButtonStyle.secondary,
-        custom_id="aura_ticket_priority"
-    )
-    async def priority(
-        self,
-        interaction,
-        button
-    ):
-
-        ticket = self._get_ticket()
-
-        if not ticket:
-
-            await interaction.response.send_message(
-                "❌ Ticket não encontrado.",
-                ephemeral=True
-            )
-
-            return
-
-        if not self._staff(
-            interaction
-        ):
-
-            await interaction.response.send_message(
-                "❌ Sem permissão.",
-                ephemeral=True
-            )
-
-            return
-
-        levels = [
-            "low",
-            "normal",
-            "high",
-            "urgent"
-        ]
-
-        current = ticket.get(
-            "priority",
-            "normal"
-        )
-
-        try:
-
-            index = levels.index(
-                current
-            )
-
-        except ValueError:
-
-            index = 1
-
-        ticket[
-            "priority"
-        ] = levels[
-            (index + 1) % len(levels)
-        ]
-
-        data = t3_load()
-
-        data["tickets"][
-            self.ticket_id
-        ] = ticket
-
-        t3_save(
-            data
-        )
-
-        await interaction.response.send_message(
-            (
-                "⚡ Prioridade alterada para **"
-                + ticket[
-                    "priority"
-                ].title()
-                + "**."
-            ),
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Fechar",
-        emoji="🔒",
-        style=discord.ButtonStyle.danger,
-        custom_id="aura_ticket_close"
-    )
-    async def close(
-        self,
-        interaction,
-        button
-    ):
-
-        ticket = self._get_ticket()
-
-        if not ticket:
-
-            await interaction.response.send_message(
-                "❌ Ticket não encontrado.",
-                ephemeral=True
-            )
-
-            return
-
-        allowed = (
-            interaction.user.id
-            == ticket.get(
-                "owner_id"
-            )
-            or self._staff(
-                interaction
-            )
-        )
-
-        if not allowed:
-
-            await interaction.response.send_message(
-                "❌ Você não pode fechar este ticket.",
-                ephemeral=True
-            )
-
-            return
-
-        ticket[
-            "closed"
-        ] = True
-
-        ticket[
-            "closed_at"
-        ] = t3_iso()
-
-        ticket[
-            "closed_by"
-        ] = interaction.user.id
-
-        data = t3_load()
-
-        data["tickets"][
-            self.ticket_id
-        ] = ticket
-
-        stats = data["stats"].setdefault(
-            str(
-                interaction.guild.id
-            ),
-            {
-                "created": 0,
-                "closed": 0,
-                "reopened": 0
-            }
-        )
-
-        stats[
-            "closed"
-        ] = (
-            stats.get(
-                "closed",
-                0
-            )
-            + 1
-        )
-
-        t3_save(
-            data
-        )
-
-        try:
-
-            await interaction.channel.send(
-                "🔒 **Ticket encerrado.**"
-            )
-
-            await interaction.channel.edit(
-                name=(
-                    "fechado-"
-                    + interaction.channel.name[:80]
-                )
-            )
-
-        except Exception:
-            pass
-
-        await interaction.response.send_message(
-            "🔒 Ticket encerrado.",
-            ephemeral=True
-        )
-
-
-# ============================================================
-# BOTÃO DE TIPO
-# ============================================================
-
-class T3DynamicTicketButton(
-    discord.ui.Button
-):
-
-    def __init__(
-        self,
-        panel_id,
-        ticket_type
-    ):
-
-        self.panel_id = str(
-            panel_id
-        )
-
-        self.ticket_type = ticket_type
-
-        kwargs = {
-            "style": discord.ButtonStyle.primary,
-            "label": str(
-                ticket_type.get(
-                    "name",
-                    "Abrir Ticket"
-                )
-            )[:80],
-            "custom_id": (
-                "aura_ticket_open_"
-                + str(
-                    ticket_type.get(
-                        "id"
-                    )
-                )
-            )
-        }
-
-        emoji = ticket_type.get(
-            "emoji"
-        )
-
-        if emoji:
-            kwargs["emoji"] = emoji
-
-        super().__init__(
-            **kwargs
-        )
-
-    async def callback(
-        self,
-        interaction
-    ):
-
-        await t3_create_ticket(
-            interaction,
-            self.panel_id,
-            self.ticket_type
-        )
-
-
-# ============================================================
-# SELECT DE TIPOS
-# ============================================================
-
-class T3DynamicTicketSelect(
-    discord.ui.Select
-):
-
-    def __init__(
-        self,
-        panel_id,
-        ticket_types
-    ):
-
-        self.panel_id = str(
-            panel_id
-        )
-
-        self.ticket_types = ticket_types
-
-        options = []
-
-        for item in ticket_types:
-
-            kwargs = {
-                "label": str(
-                    item.get(
-                        "name",
-                        "Atendimento"
-                    )
-                )[:100],
-                "description": str(
-                    item.get(
-                        "description",
-                        "Abrir atendimento."
-                    )
-                )[:100],
-                "value": str(
-                    item.get(
-                        "id"
-                    )
-                )
-            }
-
-            emoji = item.get(
-                "emoji"
-            )
-
-            if emoji:
-                kwargs["emoji"] = emoji
-
-            options.append(
-                discord.SelectOption(
-                    **kwargs
-                )
-            )
-
-        super().__init__(
-            placeholder=(
-                "Selecione o tipo de atendimento..."
-            ),
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=(
-                "aura_ticket_select_"
-                + str(panel_id)
-            )
-        )
-
-    async def callback(
-        self,
-        interaction
-    ):
-
-        selected = self.values[0]
-
-        ticket_type = None
-
-        for item in self.ticket_types:
-
-            if str(
-                item.get("id")
-            ) == str(
-                selected
-            ):
-
-                ticket_type = item
-
-                break
-
-        if not ticket_type:
-
-            await interaction.response.send_message(
-                "❌ Tipo de ticket não encontrado.",
-                ephemeral=True
-            )
-
-            return
-
-        await t3_create_ticket(
-            interaction,
-            self.panel_id,
-            ticket_type
-        )
-
-
-# ============================================================
-# PAINEL PÚBLICO
-# ============================================================
-
-class T3PanelView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        panel_id
-    ):
-
-        super().__init__(
-            timeout=None
-        )
-
-        panel = t3_get_panel(
-            panel_id
-        )
-
-        if not panel:
-            return
-
-        types = panel.get(
-            "types",
-            []
-        )
-
-        # ====================================================
-        # 1 TIPO = BOTÃO
-        # ====================================================
-
-        if len(types) == 1:
-
-            self.add_item(
-                T3DynamicTicketButton(
-                    panel_id,
-                    types[0]
-                )
-            )
-
-        # ====================================================
-        # 2+ TIPOS = SELECT
-        # ====================================================
-
-        elif len(types) > 1:
-
-            self.add_item(
-                T3DynamicTicketSelect(
-                    panel_id,
-                    types
-                )
-            )
-
-
-# ============================================================
-# CRIAÇÃO DO TICKET
-# ============================================================
-
-async def t3_create_ticket(
-    interaction,
-    panel_id,
-    ticket_type
-):
-
-    if not interaction.guild:
-
-        await interaction.response.send_message(
-            "❌ Tickets só podem ser abertos em servidores.",
-            ephemeral=True
-        )
-
-        return
-
-    panel = t3_get_panel(
-        panel_id
-    )
-
-    if not panel:
-
-        await interaction.response.send_message(
-            "❌ Painel não encontrado.",
-            ephemeral=True
-        )
-
-        return
-
-    opened = t3_open_tickets(
-        interaction.guild.id,
-        interaction.user.id
-    )
-
-    maximum = int(
-        panel.get(
-            "max_open_per_user",
-            1
-        )
-    )
-
-    if len(opened) >= maximum:
-
-        await interaction.response.send_message(
-            (
-                "⚠️ Você já atingiu o limite de "
-                f"{maximum} ticket(s) aberto(s)."
-            ),
-            ephemeral=True
-        )
-
-        return
-
-    await interaction.response.defer(
-        ephemeral=True
-    )
-
-    category = None
-
-    category_id = panel.get(
-        "category_id"
-    )
-
-    if category_id:
-
-        try:
-
-            category = interaction.guild.get_channel(
-                int(category_id)
-            )
-
-        except Exception:
-
-            category = None
-
-    staff_role = None
-
-    if panel.get(
-        "staff_role_id"
-    ):
-
-        try:
-
-            staff_role = interaction.guild.get_role(
-                int(
-                    panel[
-                        "staff_role_id"
-                    ]
-                )
-            )
-
-        except Exception:
-
-            staff_role = None
-
-    ticket_id = t3_id()
-
-    channel_name = t3_clean_name(
-        (
-            str(
-                ticket_type.get(
-                    "name",
-                    "ticket"
-                )
-            )
-            + "-"
-            + interaction.user.name
-        ),
-        "ticket"
-    )
-
-    # ========================================================
-    # PERMISSÕES
-    # ========================================================
-
-    overwrites = {
-
-        interaction.guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        interaction.user:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True
-            )
-    }
-
-    if staff_role:
-
-        overwrites[
-            staff_role
-        ] = discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            manage_messages=True
-        )
-
-    # ========================================================
-    # MODO DO PAINEL
-    # ========================================================
-
-    mode = str(
-        panel.get(
-            "mode",
-            "channel"
-        )
-    ).lower()
-
-    channel = None
-
-    if mode == "thread":
-
-        parent = category
-
-        if parent is None:
-
-            parent = interaction.channel
-
-        if not isinstance(
-            parent,
-            discord.TextChannel
-        ):
-
-            await interaction.followup.send(
-                (
-                    "❌ Não foi possível localizar "
-                    "o canal base da thread."
-                ),
-                ephemeral=True
-            )
-
-            return
-
-        try:
-
-            channel = await parent.create_thread(
-                name=channel_name,
-                type=discord.ChannelType.private_thread,
-                auto_archive_duration=1440
-            )
-
-            try:
-
-                await channel.add_user(
-                    interaction.user
-                )
-
-            except Exception:
-                pass
-
-        except Exception as exc:
-
-            await interaction.followup.send(
-                (
-                    "❌ Erro ao criar thread: "
-                    f"`{exc}`"
-                ),
-                ephemeral=True
-            )
-
-            return
-
-    else:
-
-        try:
-
-            channel = await interaction.guild.create_text_channel(
-                channel_name,
-                category=category,
-                overwrites=overwrites
-            )
-
-        except Exception as exc:
-
-            await interaction.followup.send(
-                (
-                    "❌ Erro ao criar canal: "
-                    f"`{exc}`"
-                ),
-                ephemeral=True
-            )
-
-            return
-
-    # ========================================================
-    # REGISTRO
-    # ========================================================
-
-    ticket = {
-
-        "id": ticket_id,
-
-        "guild_id":
-            interaction.guild.id,
-
-        "channel_id":
-            channel.id,
-
-        "owner_id":
-            interaction.user.id,
-
-        "owner_name":
-            interaction.user.name,
-
-        "type_id":
-            ticket_type.get(
-                "id"
-            ),
-
-        "type_name":
-            ticket_type.get(
-                "name",
-                "Suporte"
-            ),
-
-        "priority":
-            ticket_type.get(
-                "priority",
-                "normal"
-            ),
-
-        "staff_role_id":
-            panel.get(
-                "staff_role_id"
-            ),
-
-        "claimed_by":
-            None,
-
-        "added_members":
-            [],
-
-        "form_answers":
-            {},
-
-        "created_at":
-            t3_iso(),
-
-        "closed":
+        return True
+
+    if administrator:
+        return False
+
+    return bool(
+        getattr(
+            member.guild_permissions,
+            "manage_guild",
             False,
+        )
+        or
+        getattr(
+            member.guild_permissions,
+            "manage_channels",
+            False,
+        )
+    )
 
-        "closed_at":
-            None,
 
-        "closed_by":
-            None
-    }
+def aura12_embed(
+    title,
+    description="",
+    color=None,
+):
+    if color is None:
+        color = discord.Color.blurple()
 
-    data = t3_load()
-
-    data["tickets"][
-        ticket_id
-    ] = ticket
-
-    stats = data["stats"].setdefault(
-        str(
-            interaction.guild.id
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+        timestamp=datetime.now(
+            timezone.utc
         ),
-        {
-            "created": 0,
-            "closed": 0,
-            "reopened": 0
-        }
     )
 
-    stats[
-        "created"
-    ] = (
-        stats.get(
-            "created",
-            0
-        )
-        + 1
+    embed.set_footer(
+        text="Aura • Sistema 12"
     )
 
-    t3_save(
-        data
-    )
-
-    # ========================================================
-    # EMBED
-    # ========================================================
-
-    embed = t3_ticket_embed(
-        ticket,
-        panel,
-        ticket_type
-    )
-
-    view = T3TicketView(
-        ticket_id
-    )
-
-    content = interaction.user.mention
-
-    if staff_role:
-
-        content += (
-            " "
-            + staff_role.mention
-        )
-
-    try:
-
-        await channel.send(
-            content=content,
-            embed=embed,
-            view=view
-        )
-
-    except Exception as exc:
-
-        print(
-            f"[TICKET] Erro enviando embed: {exc}"
-        )
-
-    await interaction.followup.send(
-        (
-            "✅ Ticket criado: "
-            + channel.mention
-        ),
-        ephemeral=True
-    )
+    return embed
 
 
-# ============================================================
-# CENTRAL /PAINEL
-# ============================================================
-
-class T3PanelAdminView(
+class Aura12MainPanel(
     discord.ui.View
 ):
-
-    def __init__(
-        self,
-        guild_id
-    ):
-
+    def __init__(self):
         super().__init__(
             timeout=300
         )
 
-        self.guild_id = guild_id
-
-    def allowed(
-        self,
-        interaction
-    ):
-
-        return (
-            interaction.user.guild_permissions.administrator
-            or interaction.user.guild_permissions.manage_guild
-        )
-
     @discord.ui.button(
-        label="Criar painel",
+        label="Tickets",
         emoji="🎫",
-        style=discord.ButtonStyle.primary
+        style=discord.ButtonStyle.primary,
+        custom_id="aura12:panel:tickets",
     )
-    async def create_panel(
+    async def tickets(
         self,
         interaction,
-        button
+        button,
     ):
+        await interaction.response.send_message(
+            "🎫 Configure o sistema de tickets através de `/painel`.",
+            ephemeral=True,
+        )
 
-        if not self.allowed(
-            interaction
-        ):
+    @discord.ui.button(
+        label="Segurança",
+        emoji="🛡️",
+        style=discord.ButtonStyle.danger,
+        custom_id="aura12:panel:security",
+    )
+    async def security(
+        self,
+        interaction,
+        button,
+    ):
+        await interaction.response.send_message(
+            "🛡️ Use `/seguranca` para abrir a central de segurança.",
+            ephemeral=True,
+        )
 
+    @discord.ui.button(
+        label="Comunidade",
+        emoji="🌐",
+        style=discord.ButtonStyle.success,
+        custom_id="aura12:panel:community",
+    )
+    async def community(
+        self,
+        interaction,
+        button,
+    ):
+        await interaction.response.send_message(
+            "🌐 Use os comandos de comunidade para configurar anúncios, sugestões, sorteios e convites.",
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="Status",
+        emoji="📊",
+        style=discord.ButtonStyle.secondary,
+        custom_id="aura12:panel:status",
+    )
+    async def status(
+        self,
+        interaction,
+        button,
+    ):
+        guild = interaction.guild
+
+        if not guild:
             await interaction.response.send_message(
-                "❌ Você precisa gerenciar o servidor.",
-                ephemeral=True
+                "❌ Esse painel só funciona em servidores.",
+                ephemeral=True,
             )
-
             return
 
-        data = t3_load()
-
-        panel = t3_create_panel(
-            interaction.guild
+        config = aura12_guild(
+            guild.id
         )
 
-        panel[
-            "types"
-        ].append(
-            t3_create_type()
-        )
-
-        data[
-            "panels"
-        ][
-            str(
-                panel["id"]
-            )
-        ] = panel
-
-        t3_save(
-            data
-        )
-
-        await interaction.response.send_message(
+        embed = aura12_embed(
+            "📊 Status do Aura",
             (
-                "✅ **Painel criado com sucesso.**\n\n"
-                f"ID: `{panel['id']}`\n"
-                "Use **Publicar** para enviar o painel "
-                "ao canal atual."
+                f"🎫 Tickets: "
+                f"{'🟢' if config['ticket_enabled'] else '🔴'}\n"
+                f"🤖 AutoMod: "
+                f"{'🟢' if config['automod_enabled'] else '🔴'}\n"
+                f"👋 Welcome: "
+                f"{'🟢' if config['welcome_enabled'] else '🔴'}\n"
+                f"🎭 Autorole: "
+                f"{'🟢' if config['autorole_enabled'] else '🔴'}\n"
+                f"🛡️ Anti-Raid: "
+                f"{'🟢' if config['anti_raid_enabled'] else '🔴'}"
             ),
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Publicar",
-        emoji="📢",
-        style=discord.ButtonStyle.success
-    )
-    async def publish(
-        self,
-        interaction,
-        button
-    ):
-
-        if not self.allowed(
-            interaction
-        ):
-
-            await interaction.response.send_message(
-                "❌ Sem permissão.",
-                ephemeral=True
-            )
-
-            return
-
-        data = t3_load()
-
-        panels = [
-
-            p
-
-            for p in data[
-                "panels"
-            ].values()
-
-            if str(
-                p.get(
-                    "guild_id"
-                )
-            ) == str(
-                interaction.guild.id
-            )
-        ]
-
-        if not panels:
-
-            await interaction.response.send_message(
-                (
-                    "❌ Nenhum painel existe. "
-                    "Crie um primeiro."
-                ),
-                ephemeral=True
-            )
-
-            return
-
-        panel = panels[-1]
-
-        channel = interaction.channel
-
-        panel[
-            "panel_channel_id"
-        ] = channel.id
-
-        embed = t3_panel_embed(
-            panel
-        )
-
-        view = T3PanelView(
-            panel[
-                "id"
-            ]
-        )
-
-        message = await channel.send(
-            embed=embed,
-            view=view
-        )
-
-        panel[
-            "panel_message_id"
-        ] = message.id
-
-        data[
-            "panels"
-        ][
-            str(
-                panel["id"]
-            )
-        ] = panel
-
-        t3_save(
-            data
         )
 
         await interaction.response.send_message(
-            "✅ Painel publicado.",
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Configurações",
-        emoji="⚙️",
-        style=discord.ButtonStyle.secondary
-    )
-    async def settings(
-        self,
-        interaction,
-        button
-    ):
-
-        if not self.allowed(
-            interaction
-        ):
-
-            await interaction.response.send_message(
-                "❌ Sem permissão.",
-                ephemeral=True
-            )
-
-            return
-
-        data = t3_load()
-
-        panels = [
-
-            p
-
-            for p in data[
-                "panels"
-            ].values()
-
-            if str(
-                p.get(
-                    "guild_id"
-                )
-            ) == str(
-                interaction.guild.id
-            )
-        ]
-
-        if not panels:
-
-            await interaction.response.send_message(
-                "❌ Nenhum painel configurado.",
-                ephemeral=True
-            )
-
-            return
-
-        panel = panels[-1]
-
-        embed = discord.Embed(
-            title="⚙️ Configuração de Tickets",
-            description=(
-                f"**Painel:** {panel.get('name')}\n"
-                f"**Modo:** `{panel.get('mode', 'channel')}`\n"
-                f"**Tipos:** `{len(panel.get('types', []))}`\n"
-                f"**Categoria:** `{panel.get('category_id') or 'Não definida'}`\n"
-                f"**Cargo:** `{panel.get('staff_role_id') or 'Não definido'}`\n"
-                f"**Logs:** `{panel.get('log_channel_id') or 'Não definido'}`"
-            ),
-            color=t3_color(
-                panel.get(
-                    "color",
-                    "5865F2"
-                )
-            )
-        )
-
-        if panel.get(
-            "image_url"
-        ):
-
-            embed.set_image(
-                url=panel[
-                    "image_url"
-                ]
-            )
-
-        await interaction.response.send_message(
             embed=embed,
-            ephemeral=True
+            ephemeral=True,
         )
 
 
-# ============================================================
-# COMANDO /PAINEL
-# ============================================================
-
-async def _aura_ticket_painel(
-    interaction: discord.Interaction
+@bot.tree.command(
+    name="aura_status",
+    description="Mostra o status consolidado dos sistemas Aura.",
+)
+@app_commands.guild_only()
+async def aura12_status(
+    interaction,
 ):
-
-    if not interaction.guild:
-
-        await interaction.response.send_message(
-            (
-                "❌ Esse comando só funciona "
-                "em servidores."
-            ),
-            ephemeral=True
-        )
-
-        return
-
-    if not (
-        interaction.user.guild_permissions.administrator
-        or interaction.user.guild_permissions.manage_guild
-    ):
-
-        await interaction.response.send_message(
-            (
-                "❌ Você precisa de "
-                "**Gerenciar Servidor**."
-            ),
-            ephemeral=True
-        )
-
-        return
-
-    embed = discord.Embed(
-        title="🎫 Central de Tickets",
-        description=(
-            "Configure o sistema de atendimento "
-            "do servidor através desta central.\n\n"
-            "🎫 Criar painéis\n"
-            "📢 Publicar painéis\n"
-            "⚙️ Configurações\n"
-            "🧩 Tipos de atendimento\n"
-            "🎨 Aparência\n"
-            "👥 Equipe\n"
-            "📂 Categoria\n"
-            "📋 Logs"
-        ),
-        color=discord.Color.blurple()
+    config = aura12_guild(
+        interaction.guild.id
     )
 
-    embed.set_footer(
-        text="Aura • Sistema de Tickets"
+    embed = aura12_embed(
+        "⚡ Aura • Status",
+        (
+            "### Sistemas\n"
+            f"🎫 Tickets: "
+            f"`{'ATIVO' if config['ticket_enabled'] else 'DESATIVADO'}`\n"
+            f"🛡️ Segurança: `ATIVA`\n"
+            f"🤖 AutoMod: "
+            f"`{'ATIVO' if config['automod_enabled'] else 'DESATIVADO'}`\n"
+            f"👋 Boas-vindas: "
+            f"`{'ATIVO' if config['welcome_enabled'] else 'DESATIVADO'}`\n"
+            f"🎭 Autorole: "
+            f"`{'ATIVO' if config['autorole_enabled'] else 'DESATIVADO'}`\n"
+            f"🔐 Verificação: "
+            f"`{'ATIVA' if config['verification_enabled'] else 'DESATIVADA'}`\n"
+            f"🚨 Anti-Raid: "
+            f"`{'ATIVO' if config['anti_raid_enabled'] else 'DESATIVADO'}`"
+        ),
     )
 
     await interaction.response.send_message(
         embed=embed,
-        view=T3PanelAdminView(
-            interaction.guild.id
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="aura_config",
+    description="Abre a central consolidada de configuração.",
+)
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(
+    manage_guild=True
+)
+async def aura12_config(
+    interaction,
+):
+    config = aura12_guild(
+        interaction.guild.id
+    )
+
+    embed = aura12_embed(
+        "⚡ Aura • Central de Configuração",
+        (
+            "Use `/painel` para administrar os tickets.\n\n"
+            "### Sistemas\n"
+            "🎫 **Tickets** — centralizados no `/painel`\n"
+            "🛡️ **Segurança** — proteção e moderação\n"
+            "🤖 **AutoMod** — filtros e anti-spam\n"
+            "👋 **Welcome** — entrada de membros\n"
+            "🎭 **Autorole** — cargos automáticos\n"
+            "🔐 **Verificação** — sistema de verificação\n"
+            "🌐 **Comunidade** — anúncios, sugestões e sorteios"
         ),
-        ephemeral=True
+    )
+
+    embed.add_field(
+        name="Tickets",
+        value=(
+            "🟢 Ativo"
+            if config["ticket_enabled"]
+            else "🔴 Desativado"
+        ),
+    )
+
+    embed.add_field(
+        name="Bots em tickets",
+        value=(
+            "🟢 Permitidos"
+            if config["ticket_allow_bots"]
+            else "🔴 Bloqueados"
+        ),
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="aura_ticket_bots",
+    description="Permite ou bloqueia bots no sistema de tickets.",
+)
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(
+    manage_guild=True
+)
+async def aura12_ticket_bots(
+    interaction,
+    permitido: bool,
+):
+    config = aura12_guild(
+        interaction.guild.id
+    )
+
+    config["ticket_allow_bots"] = bool(
+        permitido
+    )
+
+    aura12_save()
+
+    await interaction.response.send_message(
+        (
+            "🤖 Bots em tickets: "
+            f"**{'PERMITIDOS' if permitido else 'BLOQUEADOS'}**."
+        ),
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="aura_bot_whitelist",
+    description="Adiciona ou remove um bot da whitelist.",
+)
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(
+    manage_guild=True
+)
+async def aura12_bot_whitelist(
+    interaction,
+    bot_usuario: discord.Member,
+    permitido: bool = True,
+):
+    if not bot_usuario.bot:
+        await interaction.response.send_message(
+            "❌ O usuário selecionado não é um bot.",
+            ephemeral=True,
+        )
+        return
+
+    config = aura12_guild(
+        interaction.guild.id
+    )
+
+    whitelist = config.setdefault(
+        "bot_whitelist",
+        [],
+    )
+
+    if permitido:
+        if bot_usuario.id not in whitelist:
+            whitelist.append(
+                bot_usuario.id
+            )
+    else:
+        whitelist[:] = [
+            value
+            for value in whitelist
+            if int(value) != bot_usuario.id
+        ]
+
+    aura12_save()
+
+    await interaction.response.send_message(
+        (
+            f"🤖 {bot_usuario.mention} "
+            f"{'entrou na' if permitido else 'saiu da'} whitelist."
+        ),
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="aura_painel",
+    description="Abre o painel principal do Aura.",
+)
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(
+    manage_guild=True
+)
+async def aura12_panel(
+    interaction,
+):
+    embed = aura12_embed(
+        "⚡ AURA • CENTRAL",
+        (
+            "Bem-vindo à central administrativa.\n\n"
+            "Use os botões abaixo para acessar os sistemas "
+            "ou utilize `/painel` para a configuração avançada "
+            "dos tickets."
+        ),
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=Aura12MainPanel(),
+        ephemeral=True,
     )
 
 
 # ============================================================
-# REGISTRO SEGURO DO /PAINEL
+# EVENTOS AUXILIARES
 # ============================================================
 
-def _aura_register_ticket_painel():
-
+async def aura12_process_join(
+    member,
+):
     try:
-
-        existing = bot.tree.get_command(
-            "painel"
+        config = aura12_guild(
+            member.guild.id
         )
 
-        if existing is None:
+        if config.get(
+            "autorole_enabled"
+        ):
+            role_id = config.get(
+                "autorole_id"
+            )
 
-            bot.tree.command(
-                name="painel",
-                description=(
-                    "Central de configuração do servidor"
+            if role_id:
+                role = member.guild.get_role(
+                    int(role_id)
                 )
-            )(
-                _aura_ticket_painel
+
+                if role:
+                    try:
+                        await member.add_roles(
+                            role,
+                            reason="Aura Autorole",
+                        )
+                    except Exception:
+                        pass
+
+        if config.get(
+            "welcome_enabled"
+        ):
+            channel_id = config.get(
+                "welcome_channel"
             )
 
-            print(
-                "[TICKET] /painel registrado."
-            )
+            if channel_id:
+                channel = member.guild.get_channel(
+                    int(channel_id)
+                )
 
-        else:
+                if channel:
+                    message = config.get(
+                        "welcome_message",
+                        "👋 Seja bem-vindo(a), {user}!",
+                    )
 
-            print(
-                "[TICKET] /painel já existe; "
-                "não foi criado outro comando."
-            )
+                    message = (
+                        message
+                        .replace(
+                            "{user}",
+                            member.mention,
+                        )
+                        .replace(
+                            "{username}",
+                            member.display_name,
+                        )
+                        .replace(
+                            "{server}",
+                            member.guild.name,
+                        )
+                        .replace(
+                            "{members}",
+                            str(
+                                member.guild.member_count
+                            ),
+                        )
+                    )
+
+                    await channel.send(
+                        message
+                    )
 
     except Exception as exc:
-
         print(
-            f"[TICKET] Erro registrando /painel: {exc}"
+            f"[AURA12] join error: {exc!r}"
         )
 
 
@@ -2068,135 +735,31 @@ def _aura_register_ticket_painel():
 # INICIALIZAÇÃO
 # ============================================================
 
-async def initialize_ticket_v3():
+async def aura12_initialize():
+    try:
+        aura12_save()
+    except Exception as exc:
+        print(
+            f"[AURA12] Banco: {exc!r}"
+        )
 
     try:
-
-        data = t3_load()
-
-        restored = 0
-
-        for panel in data[
-            "panels"
-        ].values():
-
-            panel_id = panel.get(
-                "id"
-            )
-
-            if not panel_id:
-                continue
-
-            try:
-
-                bot.add_view(
-                    T3PanelView(
-                        panel_id
-                    )
-                )
-
-                restored += 1
-
-            except Exception:
-                pass
-
-        _aura_register_ticket_painel()
-
-        print(
-            "[TICKET] Sistema V5 carregado."
+        bot.add_view(
+            Aura12MainPanel()
         )
-
-        print(
-            "[TICKET] "
-            f"{len(data['panels'])} painel(is), "
-            f"{len(data['tickets'])} ticket(s), "
-            f"{restored} view(s)."
-        )
-
     except Exception as exc:
-
         print(
-            f"[TICKET] Erro inicializando: {exc}"
+            f"[AURA12] View: {exc!r}"
         )
 
-
-# ============================================================
-# COMPATIBILIDADE
-# ============================================================
-
-TicketView = T3TicketView
-
-TicketPanelView = T3PanelView
-
-TicketSelectView = T3DynamicTicketSelect
-
-t3_dynamic_ticket_view = T3PanelView
-
-
-
+    print(
+        "[AURA12] Núcleo consolidado carregado."
+    )
 
 
 # ============================================================
-# 🎫 TICKET V3 — RESET AUTOMÁTICO DO SELECT
+# AURA 12 CONSOLIDATED CORE - END
 # ============================================================
-
-async def _ticket_reset_select(interaction: discord.Interaction):
-    """
-    Recria a View do painel depois de uma seleção.
-
-    Isso impede que o Discord deixe o Select visualmente
-    preso na opção escolhida.
-    """
-
-    try:
-        message = interaction.message
-
-        if message is None:
-            return
-
-        # Procura uma View/Select compatível no painel.
-        view = None
-
-        # Classes conhecidas do Ticket V3.
-        for class_name in (
-            "TicketView",
-            "TicketPanelView",
-            "TicketSelectView",
-        ):
-            cls = globals().get(class_name)
-
-            if cls is None:
-                continue
-
-            try:
-                view = cls()
-                break
-            except Exception:
-                continue
-
-        if view is None:
-            return
-
-        await message.edit(view=view)
-
-    except Exception as exc:
-        print(f"[TICKET V3] Falha ao resetar Select: {exc}")
-
-
-
-
-# ============================================================
-# 🎫 TICKET V3 — COMPONENTE DINÂMICO
-#
-# 1 opção  -> botão
-# 2+ opções -> Select Menu
-# ============================================================
-
-
-
-
-
-
 
 
 
@@ -2220,233 +783,4074 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 
+T3_FILE = Path("tickets_v3.json")
+T3_VERSION = 3
 
 
 # ============================================================
 # BANCO DE DADOS
 # ============================================================
 
+def t3_now():
+    return datetime.now(timezone.utc)
 
 
+def t3_iso(dt=None):
+    return (dt or t3_now()).isoformat()
 
 
+def t3_id(size=8):
+    return secrets.token_hex(size)
 
 
+def t3_default():
+    return {
+        "version": T3_VERSION,
+        "panels": {},
+        "tickets": {},
+        "evaluations": {},
+        "stats": {},
+        "blacklist": {},
+    }
 
 
+def t3_load():
+    if not T3_FILE.exists():
+        return t3_default()
+
+    try:
+        data = json.loads(
+            T3_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+
+        if not isinstance(data, dict):
+            data = t3_default()
+
+        base = t3_default()
+
+        # Preserva os dados existentes.
+        base.update(data)
+
+        # ----------------------------------------------------
+        # ESTRUTURAS PRINCIPAIS
+        # ----------------------------------------------------
+
+        for key in (
+            "panels",
+            "tickets",
+            "evaluations",
+            "stats",
+            "blacklist"
+        ):
+            if not isinstance(
+                base.get(key),
+                dict
+            ):
+                base[key] = {}
+
+        # ----------------------------------------------------
+        # NORMALIZAR PAINÉIS ANTIGOS
+        # ----------------------------------------------------
+
+        for panel in base["panels"].values():
+
+            if not isinstance(
+                panel,
+                dict
+            ):
+                continue
+
+            if not isinstance(
+                panel.get("types"),
+                list
+            ):
+                panel["types"] = []
+
+            panel.setdefault(
+                "guild_id",
+                None
+            )
+
+            panel.setdefault(
+                "name",
+                "Central de Atendimento"
+            )
+
+            panel.setdefault(
+                "description",
+                "Selecione abaixo o tipo de atendimento desejado."
+            )
+
+            panel.setdefault(
+                "color",
+                "5865F2"
+            )
+
+            panel.setdefault(
+                "thumbnail_url",
+                None
+            )
+
+            panel.setdefault(
+                "image_url",
+                None
+            )
+
+            panel.setdefault(
+                "footer",
+                "Sistema de Tickets V3 Ultimate"
+            )
+
+            panel.setdefault(
+                "panel_channel_id",
+                None
+            )
+
+            panel.setdefault(
+                "panel_message_id",
+                None
+            )
+
+            panel.setdefault(
+                "default_mode",
+                "channel"
+            )
+
+            panel.setdefault(
+                "default_category_id",
+                None
+            )
+
+            panel.setdefault(
+                "default_staff_role_id",
+                None
+            )
+
+            panel.setdefault(
+                "log_channel_id",
+                None
+            )
+
+            panel.setdefault(
+                "max_open_per_user",
+                1
+            )
+
+            # ------------------------------------------------
+            # NORMALIZAR TIPOS ANTIGOS
+            # ------------------------------------------------
+
+            for ticket_type in panel["types"]:
+
+                if not isinstance(
+                    ticket_type,
+                    dict
+                ):
+                    continue
+
+                defaults = t3_create_type()
+
+                for key, value in defaults.items():
+
+                    if key not in ticket_type:
+
+                        # Copiar listas/dicts para não
+                        # compartilhar referência.
+                        if isinstance(
+                            value,
+                            list
+                        ):
+                            ticket_type[key] = list(
+                                value
+                            )
+
+                        elif isinstance(
+                            value,
+                            dict
+                        ):
+                            ticket_type[key] = dict(
+                                value
+                            )
+
+                        else:
+                            ticket_type[key] = value
+
+                # Garantia explícita para o formulário.
+                if not isinstance(
+                    ticket_type.get("form"),
+                    list
+                ):
+                    ticket_type["form"] = []
+
+                if not isinstance(
+                    ticket_type.get("tags"),
+                    list
+                ):
+                    ticket_type["tags"] = []
+
+                if not isinstance(
+                    ticket_type.get("close_reasons"),
+                    list
+                ):
+                    ticket_type["close_reasons"] = [
+                        "Resolvido",
+                        "Usuário não respondeu",
+                        "Duplicado",
+                        "Encaminhado",
+                        "Outro"
+                    ]
+
+        # ----------------------------------------------------
+        # NORMALIZAR ESTATÍSTICAS
+        # ----------------------------------------------------
+
+        for guild_id, stats in list(
+            base["stats"].items()
+        ):
+
+            if not isinstance(
+                stats,
+                dict
+            ):
+                base["stats"][guild_id] = {
+                    "created": 0,
+                    "closed": 0,
+                    "reopened": 0,
+                    "evaluations": 0
+                }
+                continue
+
+            stats.setdefault(
+                "created",
+                0
+            )
+
+            stats.setdefault(
+                "closed",
+                0
+            )
+
+            stats.setdefault(
+                "reopened",
+                0
+            )
+
+            stats.setdefault(
+                "evaluations",
+                0
+            )
+
+        # ----------------------------------------------------
+        # NORMALIZAR TICKETS
+        # ----------------------------------------------------
+
+        for ticket in base["tickets"].values():
+
+            if not isinstance(
+                ticket,
+                dict
+            ):
+                continue
+
+            ticket.setdefault(
+                "closed",
+                False
+            )
+
+            ticket.setdefault(
+                "paused",
+                False
+            )
+
+            ticket.setdefault(
+                "claimed_by",
+                None
+            )
+
+            ticket.setdefault(
+                "added_members",
+                []
+            )
+
+            ticket.setdefault(
+                "form_answers",
+                {}
+            )
+
+            ticket.setdefault(
+                "closed_at",
+                None
+            )
+
+            ticket.setdefault(
+                "closed_by",
+                None
+            )
+
+            ticket.setdefault(
+                "close_reason",
+                None
+            )
+
+            if not isinstance(
+                ticket.get("added_members"),
+                list
+            ):
+                ticket["added_members"] = []
+
+            if not isinstance(
+                ticket.get("form_answers"),
+                dict
+            ):
+                ticket["form_answers"] = {}
+
+        return base
+
+    except Exception as exc:
+
+        print(
+            f"[TICKET V3] Erro ao carregar banco: {exc!r}"
+        )
+
+        return t3_default()
 
 
+def t3_save(data):
+    temp = T3_FILE.with_suffix(".tmp")
+
+    temp.write_text(
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
+
+    temp.replace(T3_FILE)
 
 
 # ============================================================
 # UTILIDADES
 # ============================================================
 
+def t3_clean_name(value, fallback="ticket"):
+    value = str(value or "").lower()
+
+    value = re.sub(
+        r"[^a-z0-9áéíóúãõâêôç _-]",
+        "",
+        value
+    )
+
+    value = re.sub(r"\s+", "-", value)
+    value = re.sub(r"-+", "-", value)
+
+    value = value.strip("-")
+
+    return (value[:90] or fallback)
 
 
+def t3_hex(value, fallback="5865F2"):
+    value = str(value or "").replace("#", "").strip()
+
+    if re.fullmatch(r"[0-9a-fA-F]{6}", value):
+        return value.upper()
+
+    return fallback
 
 
+def t3_color(value):
+    try:
+        return discord.Color(
+            int(t3_hex(value), 16)
+        )
+    except Exception:
+        return discord.Color.blurple()
 
 
+def t3_channel(guild, channel_id):
+    if not channel_id:
+        return None
+
+    try:
+        return guild.get_channel(int(channel_id))
+    except Exception:
+        return None
 
 
+def t3_role(guild, role_id):
+    if not role_id:
+        return None
+
+    try:
+        return guild.get_role(int(role_id))
+    except Exception:
+        return None
 
 
+def t3_get_panel(panel_id):
+    data = t3_load()
+
+    return data["panels"].get(
+        str(panel_id)
+    )
 
 
+def t3_get_type(panel, type_id):
+    if not panel:
+        return None
+
+    for item in panel.get("types", []):
+        if str(item.get("id")) == str(type_id):
+            return item
+
+    return None
 
 
+def t3_open_tickets(guild_id, user_id=None):
+    data = t3_load()
+
+    result = []
+
+    for ticket in data["tickets"].values():
+
+        if str(ticket.get("guild_id")) != str(guild_id):
+            continue
+
+        if user_id is not None:
+            if str(ticket.get("owner_id")) != str(user_id):
+                continue
+
+        if ticket.get("closed"):
+            continue
+
+        result.append(ticket)
+
+    return result
 
 
+def t3_current_ticket(interaction):
+    if not interaction.guild:
+        return None
+
+    channel_id = getattr(
+        interaction.channel,
+        "id",
+        None
+    )
+
+    if not channel_id:
+        return None
+
+    data = t3_load()
+
+    for ticket in data["tickets"].values():
+
+        if str(ticket.get("guild_id")) != str(
+            interaction.guild.id
+        ):
+            continue
+
+        if str(ticket.get("channel_id")) != str(
+            channel_id
+        ):
+            continue
+
+        return ticket
+
+    return None
 
 
 # ============================================================
 # PLACEHOLDERS
 # ============================================================
 
+def t3_replace(text, ticket, panel):
+    text = str(text or "")
+
+    replacements = {
+        "{ticket_id}":
+            str(ticket.get("id", "")),
+
+        "{user_id}":
+            str(ticket.get("owner_id", "")),
+
+        "{user}":
+            f"<@{ticket.get('owner_id')}>",
+
+        "{username}":
+            str(ticket.get("owner_name", "")),
+
+        "{guild}":
+            str(panel.get("guild_name", "")),
+
+        "{guild_id}":
+            str(panel.get("guild_id", "")),
+
+        "{type}":
+            str(ticket.get("type_name", "")),
+
+        "{department}":
+            str(ticket.get("department", "")),
+
+        "{priority}":
+            str(
+                ticket.get(
+                    "priority",
+                    "normal"
+                )
+            ).title(),
+
+        "{staff}":
+            (
+                f"<@{ticket['claimed_by']}>"
+                if ticket.get("claimed_by")
+                else "Ninguém"
+            ),
+
+        "{created_at}":
+            str(ticket.get("created_at", "")),
+
+        "{created_timestamp}":
+            (
+                f"<t:{int(datetime.fromisoformat(ticket['created_at']).timestamp())}:F>"
+                if ticket.get("created_at")
+                else ""
+            ),
+    }
+
+    for key, value in replacements.items():
+        text = text.replace(key, value)
+
+    return text
 
 
 # ============================================================
 # CONFIGURAÇÃO DE TIPOS
 # ============================================================
 
+def t3_create_type(
+    name="Suporte",
+    description="Preciso de ajuda.",
+    emoji="🎫"
+):
+    return {
+        "id": t3_id(4),
+
+        "name": name[:80],
+
+        "description":
+            description[:100],
+
+        "emoji":
+            emoji[:10],
+
+        "color":
+            "5865F2",
+
+        "department":
+            name[:80],
+
+        "mode":
+            "channel",
+
+        "thread_type":
+            "private",
+
+        "thread_archive":
+            1440,
+
+        "category_id":
+            None,
+
+        "staff_role_id":
+            None,
+
+        "priority":
+            "normal",
+
+        "tags":
+            [],
+
+        "max_open":
+            1,
+
+        "cooldown_seconds":
+            0,
+
+        "sla_first_response":
+            15,
+
+        "sla_resolution":
+            120,
+
+        "auto_close_minutes":
+            0,
+
+        "transcript":
+            True,
+
+        "evaluation":
+            True,
+
+        "mention_user":
+            True,
+
+        "mention_staff":
+            True,
+
+        "allow_user_close":
+            True,
+
+        "form":
+            [],
+
+        "close_reasons": [
+            "Resolvido",
+            "Usuário não respondeu",
+            "Duplicado",
+            "Encaminhado",
+            "Outro"
+        ],
+
+        "welcome_title":
+            "🎫 {type} • Atendimento",
+
+        "welcome_description":
+            (
+                "Olá {user}! 👋\n\n"
+                "Seu atendimento foi criado.\n"
+                "A equipe responderá em breve.\n\n"
+                "🆔 Ticket: `{ticket_id}`\n"
+                "🏷️ Tipo: **{type}**\n"
+                "🔴 Prioridade: **{priority}**"
+            ),
+    }
 
 
+def t3_create_panel(guild):
+    return {
+        "id":
+            t3_id(),
+
+        "guild_id":
+            guild.id,
+
+        "guild_name":
+            guild.name,
+
+        "name":
+            "Central de Atendimento",
+
+        "description":
+            (
+                "Selecione abaixo o tipo "
+                "de atendimento desejado."
+            ),
+
+        "color":
+            "5865F2",
+
+        "thumbnail_url":
+            None,
+
+        "image_url":
+            None,
+
+        "footer":
+            "Sistema de Tickets V3 Ultimate",
+
+        "panel_channel_id":
+            None,
+
+        "panel_message_id":
+            None,
+
+        "default_mode":
+            "channel",
+
+        "default_category_id":
+            None,
+
+        "default_staff_role_id":
+            None,
+
+        "log_channel_id":
+            None,
+
+        "max_open_per_user":
+            1,
+
+        "types":
+            [
+                t3_create_type()
+            ],
+
+        "tags":
+            [],
+
+        "created_at":
+            t3_iso(),
+
+        "business_hours": {
+            "enabled": False,
+            "timezone": "UTC",
+            "allow_outside": True
+        }
+    }
 
 
 # ============================================================
 # PERMISSÕES
 # ============================================================
 
+def t3_is_staff(
+    interaction,
+    ticket=None,
+    panel=None
+):
+    if not interaction.guild:
+        return False
+
+    member = interaction.user
+
+    if member.guild_permissions.administrator:
+        return True
+
+    if member.guild_permissions.manage_channels:
+        return True
+
+    panel = panel or {}
+
+    role_ids = set()
+
+    if panel.get("default_staff_role_id"):
+        role_ids.add(
+            str(panel["default_staff_role_id"])
+        )
+
+    if ticket:
+        ticket_type = t3_get_type(
+            panel,
+            ticket.get("type_id")
+        )
+
+        if ticket_type:
+            if ticket_type.get("staff_role_id"):
+                role_ids.add(
+                    str(
+                        ticket_type[
+                            "staff_role_id"
+                        ]
+                    )
+                )
+
+    for role_id in role_ids:
+
+        role = t3_role(
+            interaction.guild,
+            role_id
+        )
+
+        if role and role in member.roles:
+            return True
+
+    return False
 
 
 # ============================================================
 # EMBED DO PAINEL
 # ============================================================
 
+def t3_panel_embed(panel):
+    embed = discord.Embed(
+        title=
+            f"🎫 {panel.get('name', 'Central')}",
+
+        description=
+            panel.get("description", ""),
+
+        color=
+            t3_color(
+                panel.get("color")
+            )
+    )
+
+    if panel.get("thumbnail_url"):
+        embed.set_thumbnail(
+            url=panel["thumbnail_url"]
+        )
+
+    if panel.get("image_url"):
+        embed.set_image(
+            url=panel["image_url"]
+        )
+
+    types = panel.get("types", [])
+
+    if types:
+
+        lines = []
+
+        for item in types[:25]:
+
+            lines.append(
+                f"{item.get('emoji', '🎫')} "
+                f"**{item.get('name', 'Atendimento')}**"
+                f" — "
+                f"{item.get('description', '')}"
+            )
+
+        embed.add_field(
+            name="📋 Tipos de atendimento",
+            value="\n".join(lines)[:1024],
+            inline=False
+        )
+
+    embed.set_footer(
+        text=panel.get(
+            "footer",
+            "Tickets V3 Ultimate"
+        )
+    )
+
+    return embed
 
 
 # ============================================================
 # EMBED DO TICKET
 # ============================================================
 
+def t3_ticket_embed(
+    ticket,
+    panel,
+    ticket_type
+):
+    embed = discord.Embed(
+
+        title=t3_replace(
+            ticket_type.get(
+                "welcome_title"
+            ),
+            ticket,
+            panel
+        ),
+
+        description=t3_replace(
+            ticket_type.get(
+                "welcome_description"
+            ),
+            ticket,
+            panel
+        ),
+
+        color=t3_color(
+            ticket_type.get(
+                "color",
+                panel.get("color")
+            )
+        ),
+
+        timestamp=t3_now()
+    )
+
+    embed.add_field(
+        name="👤 Cliente",
+        value=
+            f"<@{ticket['owner_id']}>",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🙋 Responsável",
+        value=(
+            f"<@{ticket['claimed_by']}>"
+            if ticket.get("claimed_by")
+            else "Ninguém"
+        ),
+        inline=True
+    )
+
+    embed.add_field(
+        name="🔴 Prioridade",
+        value=
+            ticket.get(
+                "priority",
+                "normal"
+            ).title(),
+        inline=True
+    )
+
+    embed.add_field(
+        name="🏷️ Departamento",
+        value=
+            ticket.get(
+                "department",
+                "Atendimento"
+            ),
+        inline=True
+    )
+
+    if ticket.get("tags"):
+
+        embed.add_field(
+            name="🏷️ Tags",
+            value=
+                " ".join(
+                    ticket["tags"]
+                )[:1024],
+            inline=False
+        )
+
+    answers = ticket.get(
+        "form_answers",
+        {}
+    )
+
+    if answers:
+
+        lines = []
+
+        for key, value in answers.items():
+
+            lines.append(
+                f"**{key}:** {value}"
+            )
+
+        embed.add_field(
+            name="📝 Formulário",
+            value="\n".join(lines)[:1024],
+            inline=False
+        )
+
+    embed.set_footer(
+        text=
+            f"Ticket V3 • {ticket['id']}"
+    )
+
+    return embed
 
 
 # ============================================================
 # FORMULÁRIO
 # ============================================================
 
+class T3FormModal(discord.ui.Modal):
+
+    def __init__(
+        self,
+        panel,
+        ticket_type
+    ):
+        super().__init__(
+            title=
+                ticket_type[
+                    "name"
+                ][:45]
+        )
+
+        self.panel_id = str(
+            panel["id"]
+        )
+
+        self.type_id = str(
+            ticket_type["id"]
+        )
+
+        self.fields_data = []
+
+        for field in ticket_type.get(
+            "form",
+            []
+        )[:5]:
+
+            style = (
+                discord.TextStyle.paragraph
+                if field.get("style")
+                == "paragraph"
+                else discord.TextStyle.short
+            )
+
+            item = discord.ui.TextInput(
+                label=
+                    field.get(
+                        "label",
+                        "Campo"
+                    )[:45],
+
+                placeholder=
+                    field.get(
+                        "placeholder",
+                        ""
+                    )[:100],
+
+                style=style,
+
+                required=
+                    bool(
+                        field.get(
+                            "required",
+                            True
+                        )
+                    ),
+
+                max_length=
+                    min(
+                        int(
+                            field.get(
+                                "max_length",
+                                1000
+                            )
+                        ),
+                        4000
+                    )
+            )
+
+            self.fields_data.append(
+                (
+                    field,
+                    item
+                )
+            )
+
+            self.add_item(item)
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        panel = t3_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        ticket_type = t3_get_type(
+            panel,
+            self.type_id
+        )
+
+        if not ticket_type:
+            return await interaction.response.send_message(
+                "❌ Tipo não encontrado.",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        answers = {}
+
+        for field, item in self.fields_data:
+
+            answers[
+                field.get(
+                    "label",
+                    "Campo"
+                )
+            ] = item.value
+
+        try:
+
+            channel, _ = await t3_create_ticket(
+                interaction,
+                panel,
+                ticket_type,
+                answers
+            )
+
+            await interaction.followup.send(
+                f"✅ Ticket criado: {channel.mention}",
+                ephemeral=True
+            )
+
+        except Exception as exc:
+
+            await interaction.followup.send(
+                f"❌ {exc}",
+                ephemeral=True
+            )
 
 
 # ============================================================
 # SELECT DO PAINEL
 # ============================================================
 
+class T3TypeSelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        panel
+    ):
+        self.panel_id = str(
+            panel["id"]
+        )
+
+        options = []
+
+        for item in panel.get(
+            "types",
+            []
+        )[:25]:
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        item.get(
+                            "name",
+                            "Atendimento"
+                        )
+                    )[:100],
+
+                    description=str(
+                        item.get(
+                            "description",
+                            ""
+                        )
+                    )[:100],
+
+                    emoji=item.get(
+                        "emoji",
+                        "🎫"
+                    ),
+
+                    value=str(
+                        item.get(
+                            "id"
+                        )
+                    ),
+
+                    default=False
+                )
+            )
+
+        if not options:
+
+            options.append(
+                discord.SelectOption(
+                    label="Suporte",
+                    value="none",
+                    emoji="🎫",
+                    default=False
+                )
+            )
+
+        super().__init__(
+            placeholder=
+                "🎫 Selecione o tipo de atendimento...",
+
+            min_values=1,
+            max_values=1,
+
+            options=options,
+
+            custom_id=
+                f"t3:type:{self.panel_id}"
+        )
+
+    async def _reset_panel(
+        self,
+        interaction
+    ):
+        try:
+
+            message = getattr(
+                interaction,
+                "message",
+                None
+            )
+
+            if not message:
+                return
+
+            panel = t3_get_panel(
+                self.panel_id
+            )
+
+            if not panel:
+                return
+
+            await message.edit(
+                view=T3PanelView(
+                    panel
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                "[TICKET V3] "
+                f"Erro ao resetar Select: {exc!r}"
+            )
+
+    async def callback(
+        self,
+        interaction
+    ):
+        panel = t3_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+
+            await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+            return
+
+        if not self.values:
+
+            await interaction.response.send_message(
+                "❌ Selecione um tipo.",
+                ephemeral=True
+            )
+
+            return
+
+        ticket_type = t3_get_type(
+            panel,
+            self.values[0]
+        )
+
+        if not ticket_type:
+
+            await interaction.response.send_message(
+                "❌ Tipo inválido.",
+                ephemeral=True
+            )
+
+            await self._reset_panel(
+                interaction
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # FORMULÁRIO
+        # ----------------------------------------------------
+
+        if ticket_type.get("form"):
+
+            # A mensagem do painel é resetada antes do modal.
+            await self._reset_panel(
+                interaction
+            )
+
+            await interaction.response.send_modal(
+                T3FormModal(
+                    panel,
+                    ticket_type
+                )
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # CRIAÇÃO
+        # ----------------------------------------------------
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+
+            channel, _ = await t3_create_ticket(
+                interaction,
+                panel,
+                ticket_type
+            )
+
+            await interaction.followup.send(
+                f"✅ Ticket criado: {channel.mention}",
+                ephemeral=True
+            )
+
+        except Exception as exc:
+
+            await interaction.followup.send(
+                f"❌ {exc}",
+                ephemeral=True
+            )
+
+        finally:
+
+            # ------------------------------------------------
+            # ISSO FAZ O SELECT VOLTAR AO PLACEHOLDER
+            # ------------------------------------------------
+
+            await self._reset_panel(
+                interaction
+            )
 
 
+class T3PanelView(
+    discord.ui.View
+):
 
-# ============================================================
-# 🎫 TICKET V3 — BOTÃO PARA PAINEL COM APENAS 1 TIPO
-# ============================================================
+    def __init__(
+        self,
+        panel
+    ):
+        super().__init__(
+            timeout=None
+        )
 
-
-
-
-
+        self.add_item(
+            T3TypeSelect(panel)
+        )
 
 
 # ============================================================
 # CRIAÇÃO DO TICKET
 # ============================================================
 
+async def t3_create_ticket(
+    interaction,
+    panel,
+    ticket_type,
+    answers=None
+):
+    guild = interaction.guild
+    user = interaction.user
+
+    if not guild:
+        raise RuntimeError(
+            "O sistema precisa ser usado em um servidor."
+        )
+
+    max_open = int(
+        ticket_type.get(
+            "max_open",
+            panel.get(
+                "max_open_per_user",
+                1
+            )
+        )
+    )
+
+    opened = t3_open_tickets(
+        guild.id,
+        user.id
+    )
+
+    if len(opened) >= max_open:
+        raise RuntimeError(
+            f"Você já possui {len(opened)} "
+            f"ticket(s) aberto(s)."
+        )
+
+    data = t3_load()
+
+    category = t3_channel(
+        guild,
+        ticket_type.get(
+            "category_id"
+        )
+        or panel.get(
+            "default_category_id"
+        )
+    )
+
+    staff_role = t3_role(
+        guild,
+        ticket_type.get(
+            "staff_role_id"
+        )
+        or panel.get(
+            "default_staff_role_id"
+        )
+    )
+
+    mode = ticket_type.get(
+        "mode",
+        panel.get(
+            "default_mode",
+            "channel"
+        )
+    )
+
+    ticket_name = t3_clean_name(
+        f"{ticket_type['name']}-{user.display_name}"
+    )
+
+    ticket_id = t3_id()
+
+    ticket = {
+        "id":
+            ticket_id,
+
+        "guild_id":
+            guild.id,
+
+        "channel_id":
+            None,
+
+        "owner_id":
+            user.id,
+
+        "owner_name":
+            str(user),
+
+        "panel_id":
+            panel["id"],
+
+        "type_id":
+            ticket_type["id"],
+
+        "type_name":
+            ticket_type["name"],
+
+        "department":
+            ticket_type.get(
+                "department",
+                ticket_type["name"]
+            ),
+
+        "mode":
+            mode,
+
+        "priority":
+            ticket_type.get(
+                "priority",
+                "normal"
+            ),
+
+        "tags":
+            list(
+                ticket_type.get(
+                    "tags",
+                    []
+                )
+            ),
+
+        "claimed_by":
+            None,
+
+        "added_members":
+            [],
+
+        "closed":
+            False,
+
+        "paused":
+            False,
+
+        "created_at":
+            t3_iso(),
+
+        "first_response_at":
+            None,
+
+        "closed_at":
+            None,
+
+        "closed_by":
+            None,
+
+        "close_reason":
+            None,
+
+        "form_answers":
+            answers or {}
+    }
+
+    # --------------------------------------------------------
+    # CANAL
+    # --------------------------------------------------------
+
+    if mode == "channel":
+
+        overwrites = {
+
+            guild.default_role:
+                discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+
+            user:
+                discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    attach_files=True,
+                    embed_links=True
+                )
+        }
+
+        if staff_role:
+
+            overwrites[
+                staff_role
+            ] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                embed_links=True,
+                manage_messages=True
+            )
+
+        channel = await guild.create_text_channel(
+
+            name=ticket_name[:100],
+
+            category=(
+                category
+                if isinstance(
+                    category,
+                    discord.CategoryChannel
+                )
+                else None
+            ),
+
+            overwrites=overwrites,
+
+            reason=
+                f"Ticket V3 aberto por {user}"
+        )
+
+    # --------------------------------------------------------
+    # THREAD
+    # --------------------------------------------------------
+
+    elif mode == "thread":
+
+        parent = t3_channel(
+            guild,
+            panel.get(
+                "panel_channel_id"
+            )
+        )
+
+        if not isinstance(
+            parent,
+            discord.TextChannel
+        ):
+            raise RuntimeError(
+                "Configure o canal pai das threads."
+            )
+
+        thread_type = (
+            discord.ChannelType.private_thread
+            if ticket_type.get(
+                "thread_type",
+                "private"
+            ) == "private"
+            else discord.ChannelType.public_thread
+        )
+
+        archive = int(
+            ticket_type.get(
+                "thread_archive",
+                1440
+            )
+        )
+
+        if archive not in (
+            60,
+            1440,
+            4320,
+            10080
+        ):
+            archive = 1440
+
+        channel = await parent.create_thread(
+
+            name=ticket_name[:100],
+
+            type=thread_type,
+
+            auto_archive_duration=archive,
+
+            reason=
+                f"Ticket V3 aberto por {user}"
+        )
+
+        if thread_type == discord.ChannelType.private_thread:
+
+            try:
+                await channel.add_user(
+                    user
+                )
+            except Exception:
+                pass
+
+    else:
+
+        raise RuntimeError(
+            "Modo de ticket inválido."
+        )
+
+    ticket["channel_id"] = channel.id
+
+    data["tickets"][ticket_id] = ticket
+
+    stats = data["stats"].setdefault(
+        str(guild.id),
+        {
+            "created": 0,
+            "closed": 0,
+            "reopened": 0,
+            "evaluations": 0
+        }
+    )
+
+    stats["created"] += 1
+
+    t3_save(data)
+
+    content = None
+
+    if ticket_type.get(
+        "mention_user",
+        True
+    ):
+        content = user.mention
+
+    if (
+        ticket_type.get(
+            "mention_staff",
+            True
+        )
+        and staff_role
+    ):
+        content = (
+            f"{content or ''} "
+            f"{staff_role.mention}"
+        ).strip()
+
+    await channel.send(
+
+        content=content,
+
+        embed=t3_ticket_embed(
+            ticket,
+            panel,
+            ticket_type
+        ),
+
+        view=T3TicketView(
+            ticket_id
+        )
+    )
+
+    await t3_log(
+        guild,
+        panel,
+        "🎫 Ticket aberto",
+        (
+            f"**ID:** `{ticket_id}`\n"
+            f"**Usuário:** {user.mention}\n"
+            f"**Tipo:** {ticket_type['name']}\n"
+            f"**Modo:** `{mode}`"
+        )
+    )
+
+    return channel, ticket
 
 
 # ============================================================
 # LOGS
 # ============================================================
 
+async def t3_log(
+    guild,
+    panel,
+    title,
+    description
+):
+    channel = t3_channel(
+        guild,
+        panel.get(
+            "log_channel_id"
+        )
+    )
+
+    if not channel:
+        return
+
+    try:
+
+        embed = discord.Embed(
+            title=title,
+            description=description[:4000],
+            color=t3_color(
+                panel.get("color")
+            ),
+            timestamp=t3_now()
+        )
+
+        await channel.send(
+            embed=embed
+        )
+
+    except Exception:
+        pass
 
 
 # ============================================================
 # TRANSCRIPT
 # ============================================================
 
+async def t3_transcript(
+    channel
+):
+    lines = []
+
+    async for message in channel.history(
+        limit=None,
+        oldest_first=True
+    ):
+
+        timestamp = (
+            message.created_at
+            .strftime(
+                "%d/%m/%Y %H:%M:%S"
+            )
+        )
+
+        content = (
+            message.content
+            or ""
+        )
+
+        if message.attachments:
+
+            content += " " + " ".join(
+                attachment.url
+                for attachment
+                in message.attachments
+            )
+
+        lines.append(
+            f"[{timestamp}] "
+            f"{message.author}: "
+            f"{content}"
+        )
+
+    raw = "\n".join(
+        lines
+    ).encode(
+        "utf-8"
+    )
+
+    return discord.File(
+        io.BytesIO(raw),
+        filename=
+            f"transcript-{channel.id}.txt"
+    )
 
 
 # ============================================================
 # CONTROLE DO TICKET
 # ============================================================
 
+class T3TicketView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            timeout=None
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+    def get_ticket(self):
+        data = t3_load()
+
+        ticket = data["tickets"].get(
+            self.ticket_id
+        )
+
+        if not ticket:
+            return data, None, None
+
+        panel = data["panels"].get(
+            str(
+                ticket["panel_id"]
+            )
+        )
+
+        return data, ticket, panel
+
+    @discord.ui.button(
+        label="Assumir",
+        emoji="🙋",
+        style=discord.ButtonStyle.primary,
+        custom_id="t3:claim"
+    )
+    async def claim(
+        self,
+        interaction,
+        button
+    ):
+        data, ticket, panel = (
+            self.get_ticket()
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Ticket não encontrado.",
+                ephemeral=True
+            )
+
+        if not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Apenas a equipe pode assumir.",
+                ephemeral=True
+            )
+
+        if ticket.get(
+            "claimed_by"
+        ):
+            return await interaction.response.send_message(
+                f"❌ Já assumido por "
+                f"<@{ticket['claimed_by']}>.",
+                ephemeral=True
+            )
+
+        ticket["claimed_by"] = (
+            interaction.user.id
+        )
+
+        ticket["first_response_at"] = (
+            ticket.get(
+                "first_response_at"
+            )
+            or t3_iso()
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            f"🙋 {interaction.user.mention} "
+            f"assumiu este atendimento."
+        )
+
+    @discord.ui.button(
+        label="Ações",
+        emoji="⚙️",
+        style=discord.ButtonStyle.secondary,
+        custom_id="t3:actions"
+    )
+    async def actions(
+        self,
+        interaction,
+        button
+    ):
+        _, ticket, panel = (
+            self.get_ticket()
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Ticket não encontrado.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "⚙️ **Painel de ações**",
+            view=T3ActionsView(
+                self.ticket_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Prioridade",
+        emoji="🔴",
+        style=discord.ButtonStyle.secondary,
+        custom_id="t3:priority"
+    )
+    async def priority(
+        self,
+        interaction,
+        button
+    ):
+        _, ticket, panel = (
+            self.get_ticket()
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Ticket não encontrado.",
+                ephemeral=True
+            )
+
+        if not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "🔴 Selecione:",
+            view=T3PriorityView(
+                self.ticket_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Fechar",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger,
+        custom_id="t3:close"
+    )
+    async def close(
+        self,
+        interaction,
+        button
+    ):
+        _, ticket, panel = (
+            self.get_ticket()
+        )
+
+        if not ticket:
+            return await interaction.response.send_message(
+                "❌ Ticket não encontrado.",
+                ephemeral=True
+            )
+
+        if (
+            interaction.user.id
+            != ticket["owner_id"]
+            and not t3_is_staff(
+                interaction,
+                ticket,
+                panel
+            )
+        ):
+            return await interaction.response.send_message(
+                "❌ Você não pode fechar este ticket.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "🔒 Escolha o motivo:",
+            view=T3CloseReasonView(
+                self.ticket_id
+            ),
+            ephemeral=True
+        )
 
 
 # ============================================================
 # AÇÕES
 # ============================================================
 
+class T3ActionsView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            timeout=180
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+    @discord.ui.button(
+        label="Renomear",
+        emoji="✏️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def rename(
+        self,
+        interaction,
+        button
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            T3RenameModal(
+                self.ticket_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Adicionar membro",
+        emoji="👤",
+        style=discord.ButtonStyle.secondary
+    )
+    async def member(
+        self,
+        interaction,
+        button
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            T3MemberModal(
+                self.ticket_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Transferir",
+        emoji="🔄",
+        style=discord.ButtonStyle.secondary
+    )
+    async def transfer(
+        self,
+        interaction,
+        button
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_modal(
+            T3TransferModal(
+                self.ticket_id
+            )
+        )
+
+    @discord.ui.button(
+        label="Transcript",
+        emoji="📄",
+        style=discord.ButtonStyle.secondary
+    )
+    async def transcript(
+        self,
+        interaction,
+        button
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        try:
+
+            file = await t3_transcript(
+                interaction.channel
+            )
+
+            await interaction.response.send_message(
+                "📄 Transcript:",
+                file=file,
+                ephemeral=True
+            )
+
+        except Exception as exc:
+
+            await interaction.response.send_message(
+                f"❌ Erro: `{exc}`",
+                ephemeral=True
+            )
 
 
+def t3_bundle(ticket_id):
+
+    data = t3_load()
+
+    ticket = data["tickets"].get(
+        str(ticket_id)
+    )
+
+    panel = None
+
+    if ticket:
+
+        panel = data["panels"].get(
+            str(
+                ticket["panel_id"]
+            )
+        )
+
+    return data, ticket, panel
 
 
 # ============================================================
 # PRIORIDADE
 # ============================================================
 
+class T3PrioritySelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        self.ticket_id = str(
+            ticket_id
+        )
+
+        super().__init__(
+            placeholder=
+                "🔴 Prioridade...",
+            options=[
+                discord.SelectOption(
+                    label="Baixa",
+                    value="low",
+                    emoji="🔵"
+                ),
+                discord.SelectOption(
+                    label="Normal",
+                    value="normal",
+                    emoji="🟢"
+                ),
+                discord.SelectOption(
+                    label="Alta",
+                    value="high",
+                    emoji="🟡"
+                ),
+                discord.SelectOption(
+                    label="Urgente",
+                    value="urgent",
+                    emoji="🟠"
+                ),
+                discord.SelectOption(
+                    label="Crítica",
+                    value="critical",
+                    emoji="🔴"
+                )
+            ]
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        ticket["priority"] = (
+            self.values[0]
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Prioridade atualizada.",
+            ephemeral=True
+        )
 
 
+class T3PriorityView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            timeout=60
+        )
+
+        self.add_item(
+            T3PrioritySelect(
+                ticket_id
+            )
+        )
 
 
 # ============================================================
 # MOTIVO DE FECHAMENTO
 # ============================================================
 
+class T3CloseSelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        self.ticket_id = str(
+            ticket_id
+        )
+
+        _, ticket, panel = (
+            t3_bundle(
+                ticket_id
+            )
+        )
+
+        reasons = [
+            "Resolvido",
+            "Usuário não respondeu",
+            "Duplicado",
+            "Encaminhado",
+            "Outro"
+        ]
+
+        if ticket and panel:
+
+            ticket_type = t3_get_type(
+                panel,
+                ticket.get(
+                    "type_id"
+                )
+            )
+
+            if ticket_type:
+
+                reasons = (
+                    ticket_type.get(
+                        "close_reasons",
+                        reasons
+                    )
+                    [:25]
+                )
+
+        super().__init__(
+            placeholder=
+                "🔒 Motivo...",
+            options=[
+                discord.SelectOption(
+                    label=x[:100],
+                    value=x[:100]
+                )
+                for x in reasons
+            ]
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+        await t3_close(
+            interaction,
+            self.ticket_id,
+            self.values[0]
+        )
 
 
+class T3CloseReasonView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            timeout=120
+        )
+
+        self.add_item(
+            T3CloseSelect(
+                ticket_id
+            )
+        )
 
 
 # ============================================================
 # MODAL RENOMEAR
 # ============================================================
 
+class T3RenameModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            title="✏️ Renomear ticket"
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+        self.name = discord.ui.TextInput(
+            label="Novo nome",
+            max_length=90
+        )
+
+        self.add_item(
+            self.name
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        name = t3_clean_name(
+            self.name.value
+        )
+
+        await interaction.channel.edit(
+            name=name
+        )
+
+        await interaction.response.send_message(
+            f"✅ Nome alterado para `{name}`.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # ADICIONAR MEMBRO
 # ============================================================
 
+class T3MemberModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            title="👤 Adicionar membro"
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+        self.member_id = discord.ui.TextInput(
+            label="ID do usuário",
+            placeholder=
+                "123456789012345678"
+        )
+
+        self.add_item(
+            self.member_id
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        if not self.member_id.value.isdigit():
+            return await interaction.response.send_message(
+                "❌ ID inválido.",
+                ephemeral=True
+            )
+
+        member = interaction.guild.get_member(
+            int(
+                self.member_id.value
+            )
+        )
+
+        if not member:
+            return await interaction.response.send_message(
+                "❌ Usuário não encontrado.",
+                ephemeral=True
+            )
+
+        if isinstance(
+            interaction.channel,
+            discord.Thread
+        ):
+
+            try:
+                await interaction.channel.add_user(
+                    member
+                )
+            except Exception:
+                pass
+
+        else:
+
+            await interaction.channel.set_permissions(
+                member,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True
+            )
+
+        if member.id not in ticket[
+            "added_members"
+        ]:
+
+            ticket[
+                "added_members"
+            ].append(
+                member.id
+            )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            f"👤 {member.mention} adicionado.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # TRANSFERÊNCIA
 # ============================================================
 
+class T3TransferModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            title="🔄 Transferir ticket"
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+        self.department = discord.ui.TextInput(
+            label="Novo departamento",
+            placeholder=
+                "Financeiro, Suporte, Moderação..."
+        )
+
+        self.add_item(
+            self.department
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data, ticket, panel = (
+            t3_bundle(
+                self.ticket_id
+            )
+        )
+
+        if not ticket or not t3_is_staff(
+            interaction,
+            ticket,
+            panel
+        ):
+            return await interaction.response.send_message(
+                "❌ Sem permissão.",
+                ephemeral=True
+            )
+
+        ticket["department"] = (
+            self.department.value[:80]
+        )
+
+        ticket["claimed_by"] = None
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            f"🔄 Ticket transferido para "
+            f"**{ticket['department']}**."
+        )
 
 
 # ============================================================
 # FECHAR
 # ============================================================
 
+async def t3_close(
+    interaction,
+    ticket_id,
+    reason
+):
+    data, ticket, panel = (
+        t3_bundle(
+            ticket_id
+        )
+    )
+
+    if not ticket:
+
+        return await interaction.response.send_message(
+            "❌ Ticket não encontrado.",
+            ephemeral=True
+        )
+
+    if ticket.get("closed"):
+
+        return await interaction.response.send_message(
+            "❌ Ticket já fechado.",
+            ephemeral=True
+        )
+
+    channel = interaction.channel
+
+    # ========================================================
+    # MARCAR FECHADO
+    # ========================================================
+
+    ticket["closed"] = True
+
+    ticket["closed_at"] = t3_iso()
+
+    ticket["closed_by"] = (
+        interaction.user.id
+    )
+
+    ticket["close_reason"] = reason
+
+    # ========================================================
+    # ESTATÍSTICAS SEGURAS
+    # ========================================================
+
+    stats = data.setdefault(
+        "stats",
+        {}
+    ).setdefault(
+        str(
+            interaction.guild.id
+        ),
+        {}
+    )
+
+    stats.setdefault(
+        "created",
+        0
+    )
+
+    stats.setdefault(
+        "closed",
+        0
+    )
+
+    stats.setdefault(
+        "reopened",
+        0
+    )
+
+    stats.setdefault(
+        "evaluations",
+        0
+    )
+
+    stats["closed"] += 1
+
+    t3_save(data)
+
+    # ========================================================
+    # TIPO
+    # ========================================================
+
+    ticket_type = t3_get_type(
+        panel,
+        ticket.get("type_id")
+    )
+
+    # ========================================================
+    # TRANSCRIPT
+    # ========================================================
+
+    transcript = None
+
+    if (
+        ticket_type
+        and ticket_type.get(
+            "transcript",
+            True
+        )
+    ):
+
+        try:
+
+            transcript = await t3_transcript(
+                channel
+            )
+
+        except Exception as exc:
+
+            print(
+                "[TICKET V3] "
+                f"Erro no transcript: {exc!r}"
+            )
+
+    # ========================================================
+    # MENSAGEM
+    # ========================================================
+
+    try:
+
+        await interaction.response.send_message(
+            "🔒 **Ticket fechado**\n"
+            f"Motivo: **{reason}**"
+        )
+
+    except Exception as exc:
+
+        print(
+            "[TICKET V3] "
+            f"Erro ao responder fechamento: {exc!r}"
+        )
+
+    # ========================================================
+    # LOG
+    # ========================================================
+
+    try:
+
+        await t3_log(
+            interaction.guild,
+            panel,
+            "🔒 Ticket fechado",
+            (
+                f"**Ticket:** `{ticket_id}`\n"
+                f"**Por:** {interaction.user.mention}\n"
+                f"**Motivo:** {reason}"
+            )
+        )
+
+    except Exception as exc:
+
+        print(
+            "[TICKET V3] "
+            f"Erro no log: {exc!r}"
+        )
+
+    # ========================================================
+    # TRANSCRIPT NO LOG
+    # ========================================================
+
+    if transcript:
+
+        try:
+
+            log_channel = t3_channel(
+                interaction.guild,
+                panel.get(
+                    "log_channel_id"
+                )
+            )
+
+            if log_channel:
+
+                await log_channel.send(
+                    content=
+                        f"📄 Transcript `{ticket_id}`",
+                    file=transcript
+                )
+
+        except Exception as exc:
+
+            print(
+                "[TICKET V3] "
+                f"Erro enviando transcript: {exc!r}"
+            )
+
+    # ========================================================
+    # AVALIAÇÃO
+    #
+    # É enviada como ephemeral, portanto não depende do
+    # canal continuar existindo.
+    # ========================================================
+
+    if (
+        ticket_type
+        and ticket_type.get(
+            "evaluation",
+            True
+        )
+    ):
+
+        try:
+
+            await interaction.followup.send(
+                "⭐ **Avalie o atendimento:**",
+                view=T3RatingView(
+                    ticket_id
+                ),
+                ephemeral=True
+            )
+
+        except Exception as exc:
+
+            print(
+                "[TICKET V3] "
+                f"Erro na avaliação: {exc!r}"
+            )
+
+    # ========================================================
+    # PEQUENO DELAY
+    #
+    # Dá tempo para Discord processar a resposta,
+    # transcript e log antes de apagar o destino.
+    # ========================================================
+
+    await asyncio.sleep(5)
+
+    # ========================================================
+    # EXCLUSÃO DEFINITIVA
+    # ========================================================
+
+    try:
+
+        if isinstance(
+            channel,
+            discord.Thread
+        ):
+
+            # Não é necessário arquivar antes.
+            # Primeiro tentamos desbloquear/desarquivar.
+            try:
+
+                await channel.edit(
+                    locked=False,
+                    archived=False
+                )
+
+            except Exception:
+                pass
+
+            await channel.delete(
+                reason=
+                    f"Ticket V3 fechado por {interaction.user}"
+            )
+
+            print(
+                f"[TICKET V3] "
+                f"Thread excluída: {ticket_id}"
+            )
+
+        else:
+
+            await channel.delete(
+                reason=
+                    f"Ticket V3 fechado por {interaction.user}"
+            )
+
+            print(
+                f"[TICKET V3] "
+                f"Canal excluído: {ticket_id}"
+            )
+
+    except discord.NotFound:
+
+        print(
+            f"[TICKET V3] "
+            f"Destino já não existe: {ticket_id}"
+        )
+
+    except discord.Forbidden:
+
+        print(
+            f"[TICKET V3] "
+            f"Sem permissão para excluir: {ticket_id}"
+        )
+
+    except discord.HTTPException as exc:
+
+        print(
+            f"[TICKET V3] "
+            f"Erro Discord ao excluir {ticket_id}: {exc!r}"
+        )
+
+    except Exception as exc:
+
+        print(
+            f"[TICKET V3] "
+            f"Erro inesperado ao excluir {ticket_id}: {exc!r}"
+        )
 
 # ============================================================
 # AVALIAÇÃO# ============================================================
 # AVALIAÇÃO
 # ============================================================
 
+class T3RatingView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        ticket_id
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.ticket_id = str(
+            ticket_id
+        )
+
+    async def rate(
+        self,
+        interaction,
+        stars
+    ):
+        data = t3_load()
+
+        data["evaluations"][
+            self.ticket_id
+        ] = {
+            "stars": stars,
+            "user_id":
+                interaction.user.id,
+            "created_at":
+                t3_iso()
+        }
+
+        ticket = data[
+            "tickets"
+        ].get(
+            self.ticket_id
+        )
+
+        if ticket:
+
+            stats = data[
+                "stats"
+            ].setdefault(
+                str(
+                    ticket[
+                        "guild_id"
+                    ]
+                ),
+                {
+                    "created": 0,
+                    "closed": 0,
+                    "reopened": 0,
+                    "evaluations": 0
+                }
+            )
+
+            stats.setdefault(
+                "created",
+                0
+            )
+            stats.setdefault(
+                "closed",
+                0
+            )
+            stats.setdefault(
+                "reopened",
+                0
+            )
+            stats.setdefault(
+                "evaluations",
+                0
+            )
+
+            stats[
+                "evaluations"
+            ] += 1
+
+        t3_save(data)
+
+        await interaction.response.edit_message(
+            content=
+                f"⭐ Obrigado! "
+                f"Avaliação: **{stars}/5**.",
+            view=None
+        )
+
+    @discord.ui.button(
+        label="1",
+        emoji="⭐",
+        style=discord.ButtonStyle.danger
+    )
+    async def one(
+        self,
+        interaction,
+        button
+    ):
+        await self.rate(
+            interaction,
+            1
+        )
+
+    @discord.ui.button(
+        label="2",
+        emoji="⭐",
+        style=discord.ButtonStyle.danger
+    )
+    async def two(
+        self,
+        interaction,
+        button
+    ):
+        await self.rate(
+            interaction,
+            2
+        )
+
+    @discord.ui.button(
+        label="3",
+        emoji="⭐",
+        style=discord.ButtonStyle.secondary
+    )
+    async def three(
+        self,
+        interaction,
+        button
+    ):
+        await self.rate(
+            interaction,
+            3
+        )
+
+    @discord.ui.button(
+        label="4",
+        emoji="⭐",
+        style=discord.ButtonStyle.success
+    )
+    async def four(
+        self,
+        interaction,
+        button
+    ):
+        await self.rate(
+            interaction,
+            4
+        )
+
+    @discord.ui.button(
+        label="5",
+        emoji="⭐",
+        style=discord.ButtonStyle.success
+    )
+    async def five(
+        self,
+        interaction,
+        button
+    ):
+        await self.rate(
+            interaction,
+            5
+        )
 
 
 # ============================================================
 # PAINEL ADMINISTRATIVO
 # ============================================================
 
+class T3AdminView(
+    discord.ui.View
+):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="➕ Criar painel",
+        style=discord.ButtonStyle.success
+    )
+    async def create(
+        self,
+        interaction,
+        button
+    ):
+        await interaction.response.send_modal(
+            T3CreatePanelModal()
+        )
+
+    @discord.ui.button(
+        label="🎨 Gerenciar painéis",
+        style=discord.ButtonStyle.primary
+    )
+    async def manage(
+        self,
+        interaction,
+        button
+    ):
+        data = t3_load()
+
+        panels = [
+            panel
+            for panel in data[
+                "panels"
+            ].values()
+            if str(
+                panel.get(
+                    "guild_id"
+                )
+            ) == str(
+                interaction.guild.id
+            )
+        ]
+
+        if not panels:
+            return await interaction.response.send_message(
+                "📭 Nenhum painel criado.",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(
+            "🎨 Escolha o painel:",
+            view=T3PanelPickerView(
+                panels
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="📊 Estatísticas",
+        style=discord.ButtonStyle.secondary
+    )
+    async def statistics(
+        self,
+        interaction,
+        button
+    ):
+        data = t3_load()
+
+        stats = data[
+            "stats"
+        ].get(
+            str(
+                interaction.guild.id
+            ),
+            {}
+        )
+
+        opened = len(
+            t3_open_tickets(
+                interaction.guild.id
+            )
+        )
+
+        embed = discord.Embed(
+            title="📊 Estatísticas",
+            description=(
+                f"🎫 Criados: **{stats.get('created', 0)}**\n"
+                f"🔒 Fechados: **{stats.get('closed', 0)}**\n"
+                f"🟢 Abertos: **{opened}**\n"
+                f"🔓 Reabertos: **{stats.get('reopened', 0)}**\n"
+                f"⭐ Avaliações: **{stats.get('evaluations', 0)}**"
+            ),
+            color=discord.Color.blurple()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
 
 
 # ============================================================
 # CRIAR PAINEL
 # ============================================================
 
+class T3CreatePanelModal(
+    discord.ui.Modal
+):
+
+    def __init__(self):
+        super().__init__(
+            title="🎫 Criar painel"
+        )
+
+        self.name = discord.ui.TextInput(
+            label="Nome",
+            default="Central de Atendimento",
+            max_length=100
+        )
+
+        self.description = discord.ui.TextInput(
+            label="Descrição",
+            style=discord.TextStyle.paragraph,
+            default=
+                "Selecione abaixo o tipo de atendimento.",
+            max_length=1000
+        )
+
+        self.channel = discord.ui.TextInput(
+            label="ID do canal",
+            placeholder=
+                "Canal onde o painel será publicado",
+            max_length=25
+        )
+
+        self.add_item(self.name)
+        self.add_item(self.description)
+        self.add_item(self.channel)
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        if not self.channel.value.isdigit():
+
+            return await interaction.response.send_message(
+                "❌ ID de canal inválido.",
+                ephemeral=True
+            )
+
+        channel = interaction.guild.get_channel(
+            int(
+                self.channel.value
+            )
+        )
+
+        if not channel:
+
+            return await interaction.response.send_message(
+                "❌ Canal não encontrado.",
+                ephemeral=True
+            )
+
+        panel = t3_create_panel(
+            interaction.guild
+        )
+
+        panel["name"] = (
+            self.name.value
+        )
+
+        panel["description"] = (
+            self.description.value
+        )
+
+        panel["panel_channel_id"] = (
+            channel.id
+        )
+
+        data = t3_load()
+
+        data["panels"][
+            panel["id"]
+        ] = panel
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Painel criado.\n"
+            f"ID: `{panel['id']}`",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # GERENCIADOR
 # ============================================================
 
+class T3PanelSelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        panels
+    ):
+        self.panels = {
+            str(panel["id"]):
+                panel
+            for panel in panels
+        }
+
+        super().__init__(
+            placeholder=
+                "🎨 Escolha um painel...",
+
+            options=[
+                discord.SelectOption(
+                    label=
+                        panel["name"][:100],
+
+                    description=
+                        (
+                            f"{len(panel.get('types', []))} "
+                            f"tipo(s)"
+                        )[:100],
+
+                    value=
+                        str(
+                            panel["id"]
+                        ),
+
+                    emoji="🎫"
+                )
+                for panel in panels[:25]
+            ]
+        )
+
+    async def callback(
+        self,
+        interaction
+    ):
+        panel = self.panels[
+            self.values[0]
+        ]
+
+        await interaction.response.send_message(
+            "🛠️ **Gerenciador do painel**",
+            view=T3EditorView(
+                panel["id"]
+            ),
+            ephemeral=True
+        )
 
 
+class T3PanelPickerView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        panels
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.add_item(
+            T3PanelSelect(
+                panels
+            )
+        )
 
 
+class T3EditorView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        panel_id
+    ):
+        super().__init__(
+            timeout=300
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+    @discord.ui.button(
+        label="📤 Publicar",
+        style=discord.ButtonStyle.success
+    )
+    async def publish(
+        self,
+        interaction,
+        button
+    ):
+        data = t3_load()
+
+        panel = data[
+            "panels"
+        ].get(
+            self.panel_id
+        )
+
+        if not panel:
+
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        channel = t3_channel(
+            interaction.guild,
+            panel.get(
+                "panel_channel_id"
+            )
+        )
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+
+            return await interaction.response.send_message(
+                "❌ Canal inválido.",
+                ephemeral=True
+            )
+
+        message = await channel.send(
+            embed=
+                t3_panel_embed(
+                    panel
+                ),
+            view=
+                T3PanelView(
+                    panel
+                )
+        )
+
+        panel[
+            "panel_message_id"
+        ] = message.id
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            f"✅ Painel publicado em {channel.mention}.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="➕ Tipo",
+        style=discord.ButtonStyle.primary
+    )
+    async def add_type(
+        self,
+        interaction,
+        button
+    ):
+        await interaction.response.send_modal(
+            T3AddTypeModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="📝 Formulário",
+        style=discord.ButtonStyle.secondary
+    )
+    async def form(
+        self,
+        interaction,
+        button
+    ):
+        await interaction.response.send_modal(
+            T3FormModalConfig(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="⚙️ Configurações",
+        style=discord.ButtonStyle.secondary
+    )
+    async def config(
+        self,
+        interaction,
+        button
+    ):
+        await interaction.response.send_modal(
+            T3ConfigModal(
+                self.panel_id
+            )
+        )
 
 
 # ============================================================
 # ADICIONAR TIPO
 # ============================================================
 
+class T3AddTypeModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        panel_id
+    ):
+        super().__init__(
+            title="➕ Novo tipo"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.name = discord.ui.TextInput(
+            label="Nome",
+            default="Suporte"
+        )
+
+        self.description = discord.ui.TextInput(
+            label="Descrição",
+            default="Preciso de ajuda."
+        )
+
+        self.emoji = discord.ui.TextInput(
+            label="Emoji",
+            default="🎫"
+        )
+
+        self.mode = discord.ui.TextInput(
+            label="Modo",
+            default="channel",
+            placeholder=
+                "channel ou thread"
+        )
+
+        self.add_item(
+            self.name
+        )
+
+        self.add_item(
+            self.description
+        )
+
+        self.add_item(
+            self.emoji
+        )
+
+        self.add_item(
+            self.mode
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data = t3_load()
+
+        panel = data[
+            "panels"
+        ].get(
+            self.panel_id
+        )
+
+        if not panel:
+
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        if len(
+            panel.get(
+                "types",
+                []
+            )
+        ) >= 25:
+
+            return await interaction.response.send_message(
+                "❌ O Discord permite no máximo 25 opções por Select Menu.",
+                ephemeral=True
+            )
+
+        mode = self.mode.value.lower()
+
+        if mode not in (
+            "channel",
+            "thread"
+        ):
+
+            return await interaction.response.send_message(
+                "❌ Modo deve ser `channel` ou `thread`.",
+                ephemeral=True
+            )
+
+        ticket_type = t3_create_type(
+            self.name.value,
+            self.description.value,
+            self.emoji.value
+        )
+
+        ticket_type[
+            "mode"
+        ] = mode
+
+        panel[
+            "types"
+        ].append(
+            ticket_type
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Tipo criado.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # CONFIGURAÇÃO DE FORMULÁRIO
 # ============================================================
 
+class T3FormModalConfig(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        panel_id
+    ):
+        super().__init__(
+            title="📝 Campo de formulário"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.type_name = discord.ui.TextInput(
+            label="Nome do tipo",
+            placeholder="Suporte"
+        )
+
+        self.label = discord.ui.TextInput(
+            label="Pergunta"
+        )
+
+        self.placeholder = discord.ui.TextInput(
+            label="Placeholder",
+            required=False
+        )
+
+        self.style = discord.ui.TextInput(
+            label="Estilo",
+            default="paragraph",
+            placeholder=
+                "short ou paragraph"
+        )
+
+        self.required = discord.ui.TextInput(
+            label="Obrigatório?",
+            default="sim"
+        )
+
+        self.add_item(
+            self.type_name
+        )
+
+        self.add_item(
+            self.label
+        )
+
+        self.add_item(
+            self.placeholder
+        )
+
+        self.add_item(
+            self.style
+        )
+
+        self.add_item(
+            self.required
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data = t3_load()
+
+        panel = data[
+            "panels"
+        ].get(
+            self.panel_id
+        )
+
+        if not panel:
+
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        target = None
+
+        for ticket_type in panel[
+            "types"
+        ]:
+
+            if ticket_type[
+                "name"
+            ].lower() == self.type_name.value.lower():
+
+                target = ticket_type
+                break
+
+        if not target:
+
+            return await interaction.response.send_message(
+                "❌ Tipo não encontrado.",
+                ephemeral=True
+            )
+
+        if len(
+            target.get(
+                "form",
+                []
+            )
+        ) >= 5:
+
+            return await interaction.response.send_message(
+                "❌ O Discord permite até 5 campos por Modal.",
+                ephemeral=True
+            )
+
+        target.setdefault(
+            "form",
+            []
+        )
+
+        target.setdefault(
+            "form",
+            []
+        )
+
+        target[
+            "form"
+        ].append(
+            {
+                "id":
+                    t3_id(3),
+
+                "label":
+                    self.label.value[:45],
+
+                "placeholder":
+                    self.placeholder.value[:100],
+
+                "style":
+                    (
+                        "paragraph"
+                        if self.style.value.lower()
+                        == "paragraph"
+                        else "short"
+                    ),
+
+                "required":
+                    self.required.value.lower()
+                    in (
+                        "sim",
+                        "s",
+                        "yes",
+                        "true"
+                    ),
+
+                "max_length":
+                    1000
+            }
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Campo adicionado.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # CONFIGURAÇÃO DO PAINEL
 # ============================================================
 
+class T3ConfigModal(
+    discord.ui.Modal
+):
+
+    def __init__(
+        self,
+        panel_id
+    ):
+        super().__init__(
+            title="⚙️ Configurações"
+        )
+
+        self.panel_id = str(
+            panel_id
+        )
+
+        self.log = discord.ui.TextInput(
+            label="ID do canal de logs",
+            required=False
+        )
+
+        self.role = discord.ui.TextInput(
+            label="ID do cargo de suporte",
+            required=False
+        )
+
+        self.category = discord.ui.TextInput(
+            label="ID da categoria",
+            required=False
+        )
+
+        self.color = discord.ui.TextInput(
+            label="Cor HEX",
+            default="5865F2"
+        )
+
+        self.max_open = discord.ui.TextInput(
+            label="Máximo de tickets por usuário",
+            default="1"
+        )
+
+        self.add_item(
+            self.log
+        )
+
+        self.add_item(
+            self.role
+        )
+
+        self.add_item(
+            self.category
+        )
+
+        self.add_item(
+            self.color
+        )
+
+        self.add_item(
+            self.max_open
+        )
+
+    async def on_submit(
+        self,
+        interaction
+    ):
+        data = t3_load()
+
+        panel = data[
+            "panels"
+        ].get(
+            self.panel_id
+        )
+
+        if not panel:
+
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        panel[
+            "log_channel_id"
+        ] = (
+            self.log.value.strip()
+            or None
+        )
+
+        panel[
+            "default_staff_role_id"
+        ] = (
+            self.role.value.strip()
+            or None
+        )
+
+        panel[
+            "default_category_id"
+        ] = (
+            self.category.value.strip()
+            or None
+        )
+
+        panel[
+            "color"
+        ] = t3_hex(
+            self.color.value
+        )
+
+        try:
+
+            panel[
+                "max_open_per_user"
+            ] = max(
+                1,
+                min(
+                    20,
+                    int(
+                        self.max_open.value
+                    )
+                )
+            )
+
+        except ValueError:
+            pass
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Configurações salvas.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # /TICKET
 # ============================================================
 
+ticket_group = app_commands.Group(
+    name="ticket",
+    description=
+        "Sistema de Tickets V3 Ultimate"
+)
 
 
+@ticket_group.command(
+    name="painel",
+    description=
+        "Abrir o gerenciador de tickets"
+)
+@app_commands.checks.has_permissions(
+    manage_guild=True
+)
+async def ticket_painel(
+    interaction
+):
+    embed = discord.Embed(
+        title="🎫 TICKET V3 ULTIMATE",
+
+        description=(
+            "Central profissional de configuração.\n\n"
+
+            "🎨 Painéis\n"
+            "📋 Tipos de atendimento\n"
+            "📝 Formulários\n"
+            "🧵 Threads\n"
+            "👮 Equipe\n"
+            "🔴 Prioridades\n"
+            "🏷️ Tags\n"
+            "⏱️ SLA\n"
+            "🤖 Automação\n"
+            "📄 Transcripts\n"
+            "⭐ Avaliações\n"
+            "📊 Estatísticas"
+        ),
+
+        color=
+            discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=T3AdminView(),
+        ephemeral=True
+    )
 
 
+@ticket_group.command(
+    name="status",
+    description=
+        "Ver o status do ticket"
+)
+async def ticket_status(
+    interaction
+):
+    ticket = t3_current_ticket(
+        interaction
+    )
+
+    if not ticket:
+
+        return await interaction.response.send_message(
+            "❌ Este canal não é um ticket V3.",
+            ephemeral=True
+        )
+
+    embed = discord.Embed(
+        title="🎫 Status do Ticket",
+
+        description=(
+            f"🆔 `{ticket['id']}`\n"
+            f"👤 <@{ticket['owner_id']}>\n"
+            f"🏷️ {ticket['type_name']}\n"
+            f"📌 {ticket['department']}\n"
+            f"🔴 {ticket['priority']}\n"
+            f"🙋 "
+            + (
+                f"<@{ticket['claimed_by']}>"
+                if ticket.get("claimed_by")
+                else "Ninguém"
+            )
+        ),
+
+        color=
+            discord.Color.blurple()
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
 
 
 # ============================================================
 # RESTAURAÇÃO
 # ============================================================
 
+async def restore_ticket_v3_views():
+    data = t3_load()
+
+    bot_instance = globals().get(
+        "bot"
+    )
+
+    if not bot_instance:
+        print(
+            "[TICKET V3] Bot não encontrado."
+        )
+        return
+
+    panels = 0
+    tickets = 0
+
+    for panel in data[
+        "panels"
+    ].values():
+
+        try:
+
+            bot_instance.add_view(
+                T3PanelView(
+                    panel
+                )
+            )
+
+            panels += 1
+
+        except Exception as exc:
+
+            print(
+                f"[TICKET V3] "
+                f"Erro painel: {exc}"
+            )
+
+    for ticket in data[
+        "tickets"
+    ].values():
+
+        if ticket.get(
+            "closed"
+        ):
+            continue
+
+        try:
+
+            bot_instance.add_view(
+                T3TicketView(
+                    ticket["id"]
+                )
+            )
+
+            tickets += 1
+
+        except Exception as exc:
+
+            print(
+                f"[TICKET V3] "
+                f"Erro ticket: {exc}"
+            )
+
+    print(
+        f"[TICKET V3] "
+        f"{panels} painel(is) e "
+        f"{tickets} ticket(s) restaurados."
+    )
 
 
 # ============================================================
@@ -2456,17 +4860,205 @@ from discord.ext import commands, tasks
 
 # >>> T3 AUTO CLOSE DELETE FIX >>>
 
+async def t3_delete_destination_for_ticket(
+    guild,
+    ticket
+):
+    channel_id = ticket.get(
+        "channel_id"
+    )
+
+    if not channel_id:
+        return
+
+    channel = guild.get_channel(
+        int(channel_id)
+    )
+
+    if not channel:
+        return
+
+    try:
+
+        if isinstance(
+            channel,
+            discord.Thread
+        ):
+
+            try:
+                await channel.edit(
+                    locked=False,
+                    archived=False
+                )
+            except Exception:
+                pass
+
+        await channel.delete(
+            reason="Ticket V3 auto-close"
+        )
+
+        print(
+            f"[TICKET V3] "
+            f"Auto-close excluiu {channel_id}"
+        )
+
+    except discord.NotFound:
+        pass
+
+    except discord.Forbidden:
+
+        print(
+            f"[TICKET V3] "
+            f"Sem permissão para excluir {channel_id}"
+        )
+
+    except discord.HTTPException as exc:
+
+        print(
+            f"[TICKET V3] "
+            f"Erro ao excluir auto-close: {exc!r}"
+        )
 
 # <<< T3 AUTO CLOSE DELETE FIX >>>
 
+@tasks.loop(minutes=1)
+async def ticket_v3_loop():
+
+    data = t3_load()
+
+    changed = False
+
+    now = t3_now()
+
+    for ticket in data[
+        "tickets"
+    ].values():
+
+        if ticket.get(
+            "closed"
+        ):
+            continue
+
+        panel = data[
+            "panels"
+        ].get(
+            str(
+                ticket.get(
+                    "panel_id"
+                )
+            )
+        )
+
+        if not panel:
+            continue
+
+        ticket_type = t3_get_type(
+            panel,
+            ticket.get(
+                "type_id"
+            )
+        )
+
+        if not ticket_type:
+            continue
+
+        auto_close = int(
+            ticket_type.get(
+                "auto_close_minutes",
+                0
+            )
+            or 0
+        )
+
+        if auto_close <= 0:
+            continue
+
+        try:
+
+            created = datetime.fromisoformat(
+                ticket[
+                    "created_at"
+                ]
+            )
+
+            if (
+                now - created
+                >= timedelta(
+                    minutes=
+                        auto_close
+                )
+            ):
+
+                ticket[
+                    "closed"
+                ] = True
+
+                ticket[
+                    "closed_at"
+                ] = t3_iso()
+
+                ticket[
+                    "close_reason"
+                ] = "Auto-close"
+
+                changed = True
+
+                # Salva primeiro; a exclusão acontece depois.
+                # O canal/thread não fica abandonado no servidor.
+                guild = bot.get_guild(
+                    int(
+                        ticket.get(
+                            "guild_id"
+                        )
+                    )
+                )
+
+                if guild:
+                    await t3_delete_destination_for_ticket(
+                        guild,
+                        ticket
+                    )
+
+        except Exception:
+            continue
+
+    if changed:
+        t3_save(data)
 
 
+@ticket_v3_loop.before_loop
+async def ticket_v3_before_loop():
+
+    bot_instance = globals().get(
+        "bot"
+    )
+
+    if bot_instance:
+        await bot_instance.wait_until_ready()
 
 
 # ============================================================
 # INICIALIZAÇÃO
 # ============================================================
 
+async def initialize_ticket_v3():
+
+    t3_load()
+
+    await restore_ticket_v3_views()
+
+    try:
+
+        if not ticket_v3_loop.is_running():
+            ticket_v3_loop.start()
+
+    except RuntimeError:
+        pass
+
+    print(
+        "[TICKET V3] "
+        "Ultimate inicializado."
+    )
 
 
 print(
@@ -3249,6 +5841,38 @@ async def on_guild_join(guild):
     else:
         await internal_log('servidor adicionado', f'🤖 O FuriousBot foi adicionado ao servidor **{guild.name}** (`{guild.id}`).\n\n⚠️ Não foi possível gerar o convite. Verifique a configuração do canal de logs internos e a permissão **Criar convite**.', guild)
 
+@bot.event
+async def on_member_join(member):
+    security = security_config(member.guild.id)
+    banned_actors = {int(user_id) for user_id in security.get('banned_actors', [])}
+    if member.id in banned_actors:
+        try:
+            await member.guild.ban(member, reason='Anti-raid: atacante anteriormente banido retornou ao servidor', delete_message_seconds=0)
+        except discord.Forbidden:
+            pass
+        except discord.HTTPException:
+            pass
+        return
+    verification = verification_config(member.guild.id)
+    if verification.get('enabled') and member.bot and (member.id != (bot.user.id if bot.user else 0)) and (member.id not in {int(user_id) for user_id in verification.get('allowed_bots', [])}):
+        try:
+            await member.kick(reason='Bot não autorizado pela verificação padrão')
+            await internal_log('bot bloqueado', f'Bot não autorizado {member} (`{member.id}`) foi expulso.', member.guild, 'ERROR')
+        except discord.HTTPException as error:
+            await internal_log('falha ao bloquear bot', f'Não foi possível expulsar {member} (`{member.id}`): {error}', member.guild, 'ERROR')
+        return
+    autorole_id = guild_settings(member.guild.id).get('autorole_id')
+    autorole = member.guild.get_role(int(autorole_id)) if autorole_id else None
+    if autorole:
+        try:
+            await member.add_roles(autorole, reason='Autorole configurado no servidor')
+        except discord.HTTPException:
+            pass
+    inviter = await identify_inviter(member.guild)
+    inviter_text = inviter.mention if inviter else 'Não identificado (sem permissão para ler convites)'
+    await audit_log(member.guild, 'membros', 'Membro entrou no servidor', member, member.mention)
+    await send_server_event(member.guild, 'welcome_channel_id', '👋 Novo membro no servidor', f'Boas-vindas, {member.mention}!', discord.Color.green(), [('Usuário', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
+    await send_server_event(member.guild, 'invite_channel_id', '📨 Convite utilizado', f'{member.mention} entrou no servidor.', discord.Color.blue(), [('Convidado', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
 
 @bot.event
 async def on_member_remove(member):
@@ -3333,6 +5957,45 @@ async def on_message_delete(message):
     if message.guild and (not message.author.bot):
         await audit_log(message.guild, 'mensagens', 'Mensagem apagada', message.author, message.content or '[sem texto]')
 
+@bot.event
+async def on_message(message):
+    if message.author.bot or not message.guild:
+        return
+    if await process_automod(message):
+        return
+    if protected_channel_matches(message):
+        print(f'[SEGURANCA] Mensagem recebida no canal protegido: {message.author} ({message.author.id})')
+        try:
+            await message.delete(reason='Canal protegido contra contas comprometidas')
+        except discord.Forbidden:
+            delete_error = 'o bot não possui Gerenciar mensagens'
+        except discord.HTTPException as error:
+            delete_error = f'falha ao apagar a mensagem ({error})'
+        except Exception as error:
+            delete_error = f'falha inesperada ao apagar ({type(error).__name__}: {error})'
+            print(f'[SEGURANCA] Erro ao apagar mensagem: {type(error).__name__}: {error}')
+        else:
+            delete_error = 'mensagem apagada'
+        try:
+            banned, result = await ban_protected_author(message)
+        except Exception as error:
+            banned = False
+            result = f'falha inesperada no ban ({type(error).__name__}: {error})'
+            print(f'[SEGURANCA] Erro ao banir autor: {type(error).__name__}: {error}')
+        await audit_log(message.guild, 'seguranca', 'Ação no canal protegido', message.author, f'Canal: {message.channel.mention}; {delete_error}; resultado do ban: {result}')
+        if not banned and result != 'usuário imune':
+            alert = security_config(message.guild.id).get('alert_channel_id')
+            alert_channel = message.guild.get_channel(int(alert)) if alert else message.guild.system_channel
+            if alert_channel:
+                try:
+                    await alert_channel.send(f'⚠️ Ação no canal protegido para {message.author.mention}: {delete_error}; {result}. Verifique as permissões e a posição do cargo do bot.')
+                except discord.HTTPException:
+                    pass
+        return
+    leveled_up, level = grant_message_xp(message.guild.id, message.author.id)
+    if leveled_up:
+        await message.channel.send(f'🎉 {message.author.mention} alcançou o nível **{level}**!', delete_after=10)
+    await bot.process_commands(message)
 
 @bot.event
 async def on_guild_channel_create(channel):
@@ -5216,6 +7879,7 @@ bot.tree.add_command(verification_group)
 bot.tree.add_command(permissions_group)
 bot.tree.add_command(fun_group)
 bot.tree.add_command(backup_group)
+bot.tree.add_command(ticket_group)
 
 
 # >>> TICKET V3 ULTRA CUSTOMIZER >>>
@@ -5298,94 +7962,2248 @@ def _t3u_role_name(role):
 # MODAL DE APARÊNCIA
 # ============================================================
 
+class T3UltraAppearanceModal(discord.ui.Modal):
+
+    def __init__(self, panel_id):
+        super().__init__(title="🎨 Aparência do painel")
+
+        self.panel_id = str(panel_id)
+
+        panel = _t3u_panel(panel_id) or {}
+
+        self.title_input = discord.ui.TextInput(
+            label="Título",
+            default=str(
+                panel.get("name", "Central de Atendimento")
+            )[:256],
+            max_length=256
+        )
+
+        self.description_input = discord.ui.TextInput(
+            label="Descrição",
+            style=discord.TextStyle.paragraph,
+            default=str(
+                panel.get(
+                    "description",
+                    "Selecione abaixo o tipo de atendimento."
+                )
+            )[:1000],
+            max_length=1000
+        )
+
+        self.footer_input = discord.ui.TextInput(
+            label="Rodapé",
+            default=str(
+                panel.get(
+                    "footer",
+                    "Sistema de Tickets V3 Ultimate"
+                )
+            )[:2048],
+            max_length=2048,
+            required=False
+        )
+
+        self.color_input = discord.ui.TextInput(
+            label="Cor HEX",
+            default=str(
+                panel.get("color", "5865F2")
+            ),
+            max_length=7
+        )
+
+        self.image_input = discord.ui.TextInput(
+            label="URL da imagem",
+            default=str(
+                panel.get("image_url") or ""
+            )[:400],
+            max_length=400,
+            required=False
+        )
+
+        self.add_item(self.title_input)
+        self.add_item(self.description_input)
+        self.add_item(self.footer_input)
+        self.add_item(self.color_input)
+        self.add_item(self.image_input)
+
+    async def on_submit(self, interaction):
+
+        panel = _t3u_panel(self.panel_id)
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        color = t3_hex(
+            self.color_input.value,
+            panel.get("color", "5865F2")
+        )
+
+        panel["name"] = self.title_input.value.strip()
+        panel["description"] = self.description_input.value
+        panel["footer"] = (
+            self.footer_input.value.strip()
+            or "Sistema de Tickets V3 Ultimate"
+        )
+        panel["color"] = color
+        panel["image_url"] = (
+            self.image_input.value.strip()
+            or None
+        )
+
+        t3_save(t3_load())
+
+        await interaction.response.send_message(
+            "✅ Aparência atualizada.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # MODAL DE IMAGENS
 # ============================================================
 
+class T3UltraMediaModal(discord.ui.Modal):
+
+    def __init__(self, panel_id):
+        super().__init__(title="🖼️ Imagens do painel")
+
+        self.panel_id = str(panel_id)
+
+        panel = _t3u_panel(panel_id) or {}
+
+        self.image = discord.ui.TextInput(
+            label="Imagem principal",
+            default=str(
+                panel.get("image_url") or ""
+            )[:400],
+            max_length=400,
+            required=False
+        )
+
+        self.thumbnail = discord.ui.TextInput(
+            label="Thumbnail",
+            default=str(
+                panel.get("thumbnail_url") or ""
+            )[:400],
+            max_length=400,
+            required=False
+        )
+
+        self.add_item(self.image)
+        self.add_item(self.thumbnail)
+
+    async def on_submit(self, interaction):
+
+        panel = _t3u_panel(self.panel_id)
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        panel["image_url"] = (
+            self.image.value.strip() or None
+        )
+
+        panel["thumbnail_url"] = (
+            self.thumbnail.value.strip() or None
+        )
+
+        t3_save(t3_load())
+
+        await interaction.response.send_message(
+            "✅ Imagens atualizadas.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # SELEÇÃO DE DESTINOS
 # ============================================================
 
+class T3UltraDestinationView(discord.ui.View):
+
+    def __init__(self, panel_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+
+        panel = _t3u_panel(panel_id) or {}
+
+        # Canal do painel
+        channel_select = discord.ui.ChannelSelect(
+            placeholder="📢 Escolha o canal do painel...",
+            channel_types=[discord.ChannelType.text],
+            row=0
+        )
+
+        async def channel_callback(interaction):
+
+            channel = channel_select.values[0]
+
+            _t3u_save_panel(
+                self.panel_id,
+                panel_channel_id=channel.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Painel será publicado em {channel.mention}.",
+                ephemeral=True
+            )
+
+        channel_select.callback = channel_callback
+        self.add_item(channel_select)
+
+        # Categoria
+        category_select = discord.ui.ChannelSelect(
+            placeholder="📁 Escolha a categoria dos tickets...",
+            channel_types=[discord.ChannelType.category],
+            row=1
+        )
+
+        async def category_callback(interaction):
+
+            category = category_select.values[0]
+
+            _t3u_save_panel(
+                self.panel_id,
+                default_category_id=category.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Categoria definida: {category.name}.",
+                ephemeral=True
+            )
+
+        category_select.callback = category_callback
+        self.add_item(category_select)
+
+        # Logs
+        log_select = discord.ui.ChannelSelect(
+            placeholder="📚 Escolha o canal de logs...",
+            channel_types=[discord.ChannelType.text],
+            row=2
+        )
+
+        async def log_callback(interaction):
+
+            channel = log_select.values[0]
+
+            _t3u_save_panel(
+                self.panel_id,
+                log_channel_id=channel.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Logs configurados em {channel.mention}.",
+                ephemeral=True
+            )
+
+        log_select.callback = log_callback
+        self.add_item(log_select)
+
+        # Remover logs
+        @discord.ui.button(
+            label="Remover logs",
+            emoji="🗑️",
+            style=discord.ButtonStyle.danger,
+            row=3
+        )
+        async def remove_logs(interaction, button):
+
+            _t3u_save_panel(
+                self.panel_id,
+                log_channel_id=None
+            )
+
+            await interaction.response.send_message(
+                "✅ Canal de logs removido.",
+                ephemeral=True
+            )
 
 
 # ============================================================
 # SELEÇÃO DE EQUIPE
 # ============================================================
 
+class T3UltraTeamView(discord.ui.View):
+
+    def __init__(self, panel_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+
+        role_select = discord.ui.RoleSelect(
+            placeholder="👮 Escolha o cargo da equipe...",
+            row=0
+        )
+
+        async def role_callback(interaction):
+
+            role = role_select.values[0]
+
+            _t3u_save_panel(
+                self.panel_id,
+                default_staff_role_id=role.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Cargo da equipe definido como {role.mention}.",
+                ephemeral=True
+            )
+
+        role_select.callback = role_callback
+        self.add_item(role_select)
+
+        @discord.ui.button(
+            label="Remover cargo",
+            emoji="🗑️",
+            style=discord.ButtonStyle.danger,
+            row=1
+        )
+        async def remove_role(interaction, button):
+
+            _t3u_save_panel(
+                self.panel_id,
+                default_staff_role_id=None
+            )
+
+            await interaction.response.send_message(
+                "✅ Cargo padrão removido.",
+                ephemeral=True
+            )
 
 
 # ============================================================
 # COMPORTAMENTO DO PAINEL
 # ============================================================
 
+class T3UltraBehaviorModal(discord.ui.Modal):
+
+    def __init__(self, panel_id):
+        super().__init__(title="⚙️ Comportamento do painel")
+
+        self.panel_id = str(panel_id)
+
+        panel = _t3u_panel(panel_id) or {}
+
+        self.max_open = discord.ui.TextInput(
+            label="Máximo de tickets por usuário",
+            default=str(
+                panel.get("max_open_per_user", 1)
+            ),
+            max_length=2
+        )
+
+        self.placeholder = discord.ui.TextInput(
+            label="Texto do Select Menu",
+            default=str(
+                panel.get(
+                    "select_placeholder",
+                    "🎫 Selecione o tipo de atendimento..."
+                )
+            )[:150],
+            max_length=150
+        )
+
+        self.default_mode = discord.ui.TextInput(
+            label="Modo padrão",
+            default=str(
+                panel.get("default_mode", "channel")
+            ),
+            placeholder="channel ou thread"
+        )
+
+        self.allow_bots = discord.ui.TextInput(
+            label="Permitir bots?",
+            default=(
+                "sim"
+                if panel.get("allow_bots", False)
+                else "não"
+            )
+        )
+
+        self.business_hours = discord.ui.TextInput(
+            label="Horário comercial ativo?",
+            default=(
+                "sim"
+                if panel.get(
+                    "business_hours",
+                    {}
+                ).get("enabled", False)
+                else "não"
+            )
+        )
+
+        self.add_item(self.max_open)
+        self.add_item(self.placeholder)
+        self.add_item(self.default_mode)
+        self.add_item(self.allow_bots)
+        self.add_item(self.business_hours)
+
+    async def on_submit(self, interaction):
+
+        panel = _t3u_panel(self.panel_id)
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        try:
+            maximum = max(
+                1,
+                min(
+                    20,
+                    int(self.max_open.value)
+                )
+            )
+        except ValueError:
+            maximum = 1
+
+        mode = self.default_mode.value.strip().lower()
+
+        if mode not in {"channel", "thread"}:
+            mode = "channel"
+
+        panel["max_open_per_user"] = maximum
+        panel["select_placeholder"] = (
+            self.placeholder.value.strip()
+            or "🎫 Selecione o tipo de atendimento..."
+        )
+        panel["default_mode"] = mode
+        panel["allow_bots"] = _t3u_bool(
+            self.allow_bots.value
+        )
+
+        panel.setdefault(
+            "business_hours",
+            {}
+        )
+
+        panel["business_hours"]["enabled"] = (
+            _t3u_bool(
+                self.business_hours.value
+            )
+        )
+
+        t3_save(t3_load())
+
+        await interaction.response.send_message(
+            "✅ Comportamento atualizado.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # MODAL DO TIPO
 # ============================================================
 
+class T3UltraTypeModal(discord.ui.Modal):
+
+    def __init__(self, panel_id, type_id=None):
+        super().__init__(
+            title="🎫 Editar tipo"
+            if type_id
+            else "➕ Criar tipo"
+        )
+
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id) if type_id else None
+
+        panel = _t3u_panel(panel_id) or {}
+        ticket_type = (
+            _t3u_type(panel, type_id)
+            if type_id
+            else t3_create_type()
+        )
+
+        self.name = discord.ui.TextInput(
+            label="Nome",
+            default=str(
+                ticket_type.get("name", "Suporte")
+            )[:80],
+            max_length=80
+        )
+
+        self.description = discord.ui.TextInput(
+            label="Descrição",
+            style=discord.TextStyle.paragraph,
+            default=str(
+                ticket_type.get(
+                    "description",
+                    "Preciso de ajuda."
+                )
+            )[:100],
+            max_length=100
+        )
+
+        self.emoji = discord.ui.TextInput(
+            label="Emoji",
+            default=str(
+                ticket_type.get("emoji", "🎫")
+            )[:10],
+            max_length=10
+        )
+
+        self.department = discord.ui.TextInput(
+            label="Departamento",
+            default=str(
+                ticket_type.get(
+                    "department",
+                    "Suporte"
+                )
+            )[:80],
+            max_length=80
+        )
+
+        self.color = discord.ui.TextInput(
+            label="Cor HEX",
+            default=str(
+                ticket_type.get(
+                    "color",
+                    "5865F2"
+                )
+            ),
+            max_length=7
+        )
+
+        self.add_item(self.name)
+        self.add_item(self.description)
+        self.add_item(self.emoji)
+        self.add_item(self.department)
+        self.add_item(self.color)
+
+    async def on_submit(self, interaction):
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        if self.type_id:
+
+            ticket_type = _t3u_type(
+                panel,
+                self.type_id
+            )
+
+            if not ticket_type:
+                return await interaction.response.send_message(
+                    "❌ Tipo não encontrado.",
+                    ephemeral=True
+                )
+
+        else:
+
+            if len(
+                panel.get("types", [])
+            ) >= 25:
+                return await interaction.response.send_message(
+                    "❌ O Discord permite até 25 opções no Select Menu.",
+                    ephemeral=True
+                )
+
+            ticket_type = t3_create_type(
+                self.name.value,
+                self.description.value,
+                self.emoji.value
+            )
+
+            panel.setdefault(
+                "types",
+                []
+            ).append(
+                ticket_type
+            )
+
+        ticket_type["name"] = (
+            self.name.value.strip()
+        )
+
+        ticket_type["description"] = (
+            self.description.value.strip()
+        )[:100]
+
+        ticket_type["emoji"] = (
+            self.emoji.value.strip()
+            or "🎫"
+        )
+
+        ticket_type["department"] = (
+            self.department.value.strip()
+            or self.name.value.strip()
+        )
+
+        ticket_type["color"] = t3_hex(
+            self.color.value
+        )
+
+        ticket_type.setdefault(
+            "form",
+            []
+        )
+
+        ticket_type.setdefault(
+            "tags",
+            []
+        )
+
+        ticket_type.setdefault(
+            "close_reasons",
+            [
+                "Resolvido",
+                "Usuário não respondeu",
+                "Duplicado",
+                "Encaminhado",
+                "Outro"
+            ]
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Tipo salvo.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # EDITOR DO TIPO
 # ============================================================
 
+class T3UltraTypeEditorView(discord.ui.View):
+
+    def __init__(self, panel_id, type_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id)
+
+        panel = _t3u_panel(panel_id) or {}
+        ticket_type = _t3u_type(
+            panel,
+            type_id
+        ) or {}
+
+        # Cargo
+        role_select = discord.ui.RoleSelect(
+            placeholder="👮 Cargo responsável por este tipo...",
+            row=0
+        )
+
+        async def role_callback(interaction):
+
+            role = role_select.values[0]
+
+            _t3u_save_type(
+                self.panel_id,
+                self.type_id,
+                staff_role_id=role.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Cargo definido: {role.mention}.",
+                ephemeral=True
+            )
+
+        role_select.callback = role_callback
+        self.add_item(role_select)
+
+        # Categoria
+        category_select = discord.ui.ChannelSelect(
+            placeholder="📁 Categoria deste tipo...",
+            channel_types=[discord.ChannelType.category],
+            row=1
+        )
+
+        async def category_callback(interaction):
+
+            category = category_select.values[0]
+
+            _t3u_save_type(
+                self.panel_id,
+                self.type_id,
+                category_id=category.id
+            )
+
+            await interaction.response.send_message(
+                f"✅ Categoria definida: {category.name}.",
+                ephemeral=True
+            )
+
+        category_select.callback = category_callback
+        self.add_item(category_select)
+
+        # Modo
+        mode_select = discord.ui.Select(
+            placeholder="🧵 Escolha o modo...",
+            options=[
+                discord.SelectOption(
+                    label="Canal privado",
+                    value="channel",
+                    emoji="📁"
+                ),
+                discord.SelectOption(
+                    label="Thread",
+                    value="thread",
+                    emoji="🧵"
+                )
+            ],
+            row=2
+        )
+
+        async def mode_callback(interaction):
+
+            mode = mode_select.values[0]
+
+            _t3u_save_type(
+                self.panel_id,
+                self.type_id,
+                mode=mode
+            )
+
+            await interaction.response.send_message(
+                f"✅ Modo alterado para **{mode}**.",
+                ephemeral=True
+            )
+
+        mode_select.callback = mode_callback
+        self.add_item(mode_select)
+
+        # Prioridade
+        priority_select = discord.ui.Select(
+            placeholder="🔴 Prioridade padrão...",
+            options=[
+                discord.SelectOption(
+                    label="Baixa",
+                    value="low",
+                    emoji="🟢"
+                ),
+                discord.SelectOption(
+                    label="Normal",
+                    value="normal",
+                    emoji="🟡"
+                ),
+                discord.SelectOption(
+                    label="Alta",
+                    value="high",
+                    emoji="🟠"
+                ),
+                discord.SelectOption(
+                    label="Urgente",
+                    value="urgent",
+                    emoji="🔴"
+                )
+            ],
+            row=3
+        )
+
+        async def priority_callback(interaction):
+
+            priority = priority_select.values[0]
+
+            _t3u_save_type(
+                self.panel_id,
+                self.type_id,
+                priority=priority
+            )
+
+            await interaction.response.send_message(
+                f"✅ Prioridade definida: **{priority}**.",
+                ephemeral=True
+            )
+
+        priority_select.callback = priority_callback
+        self.add_item(priority_select)
+
+    @discord.ui.button(
+        label="✏️ Editar informações",
+        emoji="📝",
+        style=discord.ButtonStyle.primary,
+        row=4
+    )
+    async def edit_info(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraTypeModal(
+                self.panel_id,
+                self.type_id
+            )
+        )
+
+    @discord.ui.button(
+        label="⚙️ Limites e SLA",
+        emoji="⏱️",
+        style=discord.ButtonStyle.secondary,
+        row=4
+    )
+    async def limits(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraTypeLimitsModal(
+                self.panel_id,
+                self.type_id
+            )
+        )
+
+    @discord.ui.button(
+        label="📝 Formulário",
+        emoji="📋",
+        style=discord.ButtonStyle.secondary,
+        row=4
+    )
+    async def forms(self, interaction, button):
+
+        await interaction.response.send_message(
+            "📝 **Formulário deste atendimento**",
+            view=T3UltraFormManagerView(
+                self.panel_id,
+                self.type_id
+            ),
+            ephemeral=True
+        )
 
 
 # ============================================================
 # LIMITES / SLA DO TIPO
 # ============================================================
 
+class T3UltraTypeLimitsModal(discord.ui.Modal):
+
+    def __init__(self, panel_id, type_id):
+        super().__init__(title="⏱️ Limites e SLA")
+
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id)
+
+        panel = _t3u_panel(panel_id) or {}
+        ticket_type = _t3u_type(
+            panel,
+            type_id
+        ) or {}
+
+        self.max_open = discord.ui.TextInput(
+            label="Máximo aberto por usuário",
+            default=str(
+                ticket_type.get(
+                    "max_open",
+                    1
+                )
+            ),
+            max_length=2
+        )
+
+        self.cooldown = discord.ui.TextInput(
+            label="Cooldown em segundos",
+            default=str(
+                ticket_type.get(
+                    "cooldown_seconds",
+                    0
+                )
+            ),
+            max_length=6
+        )
+
+        self.sla_first = discord.ui.TextInput(
+            label="SLA primeira resposta (min)",
+            default=str(
+                ticket_type.get(
+                    "sla_first_response",
+                    15
+                )
+            ),
+            max_length=5
+        )
+
+        self.sla_resolution = discord.ui.TextInput(
+            label="SLA resolução (min)",
+            default=str(
+                ticket_type.get(
+                    "sla_resolution",
+                    120
+                )
+            ),
+            max_length=6
+        )
+
+        self.auto_close = discord.ui.TextInput(
+            label="Fechar automaticamente (min)",
+            default=str(
+                ticket_type.get(
+                    "auto_close_minutes",
+                    0
+                )
+            ),
+            max_length=6
+        )
+
+        self.add_item(self.max_open)
+        self.add_item(self.cooldown)
+        self.add_item(self.sla_first)
+        self.add_item(self.sla_resolution)
+        self.add_item(self.auto_close)
+
+    async def on_submit(self, interaction):
+
+        ticket_type = _t3u_type(
+            _t3u_panel(self.panel_id),
+            self.type_id
+        )
+
+        if not ticket_type:
+            return await interaction.response.send_message(
+                "❌ Tipo não encontrado.",
+                ephemeral=True
+            )
+
+        def number(field, default=0):
+            try:
+                return max(
+                    0,
+                    int(field.value)
+                )
+            except ValueError:
+                return default
+
+        ticket_type["max_open"] = max(
+            1,
+            min(
+                20,
+                number(self.max_open, 1)
+            )
+        )
+
+        ticket_type["cooldown_seconds"] = number(
+            self.cooldown
+        )
+
+        ticket_type["sla_first_response"] = number(
+            self.sla_first,
+            15
+        )
+
+        ticket_type["sla_resolution"] = number(
+            self.sla_resolution,
+            120
+        )
+
+        ticket_type["auto_close_minutes"] = number(
+            self.auto_close
+        )
+
+        t3_save(t3_load())
+
+        await interaction.response.send_message(
+            "✅ Limites e SLA atualizados.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # FORMULÁRIO
 # ============================================================
 
+class T3UltraFormAddModal(discord.ui.Modal):
+
+    def __init__(self, panel_id, type_id):
+        super().__init__(title="📝 Nova pergunta")
+
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id)
+
+        self.label_input = discord.ui.TextInput(
+            label="Pergunta",
+            max_length=45
+        )
+
+        self.placeholder = discord.ui.TextInput(
+            label="Placeholder",
+            max_length=100,
+            required=False
+        )
+
+        self.style = discord.ui.TextInput(
+            label="Tipo de resposta",
+            default="paragraph",
+            placeholder="short ou paragraph"
+        )
+
+        self.required = discord.ui.TextInput(
+            label="Obrigatória?",
+            default="sim"
+        )
+
+        self.max_length = discord.ui.TextInput(
+            label="Máximo de caracteres",
+            default="1000",
+            max_length=4
+        )
+
+        self.add_item(self.label_input)
+        self.add_item(self.placeholder)
+        self.add_item(self.style)
+        self.add_item(self.required)
+        self.add_item(self.max_length)
+
+    async def on_submit(self, interaction):
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        ticket_type = _t3u_type(
+            panel,
+            self.type_id
+        )
+
+        if not ticket_type:
+            return await interaction.response.send_message(
+                "❌ Tipo não encontrado.",
+                ephemeral=True
+            )
+
+        form = ticket_type.setdefault(
+            "form",
+            []
+        )
+
+        if len(form) >= 5:
+            return await interaction.response.send_message(
+                "❌ O Discord permite no máximo 5 perguntas em um Modal.",
+                ephemeral=True
+            )
+
+        try:
+            maximum = max(
+                1,
+                min(
+                    4000,
+                    int(
+                        self.max_length.value
+                    )
+                )
+            )
+        except ValueError:
+            maximum = 1000
+
+        form.append({
+            "id": t3_id(3),
+            "label": self.label_input.value[:45],
+            "placeholder": self.placeholder.value[:100],
+            "style": (
+                "paragraph"
+                if self.style.value.lower().strip()
+                == "paragraph"
+                else "short"
+            ),
+            "required": _t3u_bool(
+                self.required.value
+            ),
+            "max_length": maximum
+        })
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Pergunta adicionada.",
+            ephemeral=True
+        )
 
 
+class T3UltraFormManagerView(discord.ui.View):
+
+    def __init__(self, panel_id, type_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id)
+
+    @discord.ui.button(
+        label="➕ Adicionar pergunta",
+        emoji="📝",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def add(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraFormAddModal(
+                self.panel_id,
+                self.type_id
+            )
+        )
+
+    @discord.ui.button(
+        label="📋 Ver perguntas",
+        emoji="👁️",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def list_fields(self, interaction, button):
+
+        panel = _t3u_panel(
+            self.panel_id
+        )
+
+        ticket_type = _t3u_type(
+            panel,
+            self.type_id
+        )
+
+        fields = (
+            ticket_type.get("form", [])
+            if ticket_type
+            else []
+        )
+
+        if not fields:
+            text = "Nenhuma pergunta configurada."
+        else:
+            lines = []
+
+            for index, field in enumerate(
+                fields,
+                1
+            ):
+                required = (
+                    "obrigatória"
+                    if field.get("required", True)
+                    else "opcional"
+                )
+
+                lines.append(
+                    f"**{index}.** "
+                    f"{field.get('label', 'Campo')} "
+                    f"— {required}"
+                )
+
+            text = "\n".join(lines)
+
+        await interaction.response.send_message(
+            text[:4000],
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🗑️ Limpar perguntas",
+        emoji="🧹",
+        style=discord.ButtonStyle.danger,
+        row=0
+    )
+    async def clear(self, interaction, button):
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        ticket_type = _t3u_type(
+            panel,
+            self.type_id
+        )
+
+        if ticket_type:
+            ticket_type["form"] = []
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Todas as perguntas foram removidas.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # MOTIVOS DE FECHAMENTO / TAGS
 # ============================================================
 
+class T3UltraAdvancedModal(discord.ui.Modal):
+
+    def __init__(self, panel_id, type_id=None):
+        super().__init__(
+            title="🧩 Configuração avançada"
+        )
+
+        self.panel_id = str(panel_id)
+        self.type_id = (
+            str(type_id)
+            if type_id
+            else None
+        )
+
+        panel = _t3u_panel(panel_id) or {}
+
+        ticket_type = (
+            _t3u_type(panel, type_id)
+            if type_id
+            else None
+        )
+
+        target = (
+            ticket_type
+            if ticket_type
+            else panel
+        )
+
+        self.tags = discord.ui.TextInput(
+            label="Tags",
+            default=", ".join(
+                target.get("tags", [])
+            )[:1000],
+            placeholder="suporte, cliente, vip",
+            required=False
+        )
+
+        self.close_reasons = discord.ui.TextInput(
+            label="Motivos de fechamento",
+            style=discord.TextStyle.paragraph,
+            default="\n".join(
+                target.get(
+                    "close_reasons",
+                    [
+                        "Resolvido",
+                        "Usuário não respondeu",
+                        "Duplicado",
+                        "Encaminhado",
+                        "Outro"
+                    ]
+                )
+            )[:1000],
+            required=False
+        )
+
+        self.welcome_title = discord.ui.TextInput(
+            label="Título do ticket",
+            default=str(
+                target.get(
+                    "welcome_title",
+                    "🎫 {type} • Atendimento"
+                )
+            )[:256],
+            max_length=256
+        )
+
+        self.welcome_description = discord.ui.TextInput(
+            label="Mensagem inicial",
+            style=discord.TextStyle.paragraph,
+            default=str(
+                target.get(
+                    "welcome_description",
+                    "Olá {user}! Seu atendimento foi criado."
+                )
+            )[:1000],
+            max_length=1000
+        )
+
+        self.allow_user_close = discord.ui.TextInput(
+            label="Usuário pode fechar?",
+            default=(
+                "sim"
+                if target.get(
+                    "allow_user_close",
+                    True
+                )
+                else "não"
+            )
+        )
+
+        self.add_item(self.tags)
+        self.add_item(self.close_reasons)
+        self.add_item(self.welcome_title)
+        self.add_item(self.welcome_description)
+        self.add_item(self.allow_user_close)
+
+    async def on_submit(self, interaction):
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        target = (
+            _t3u_type(panel, self.type_id)
+            if self.type_id
+            else panel
+        )
+
+        if not target:
+            return await interaction.response.send_message(
+                "❌ Configuração não encontrada.",
+                ephemeral=True
+            )
+
+        target["tags"] = [
+            item.strip()
+            for item in self.tags.value.split(",")
+            if item.strip()
+        ][:20]
+
+        target["close_reasons"] = [
+            item.strip()
+            for item in self.close_reasons.value.splitlines()
+            if item.strip()
+        ][:20]
+
+        if not target["close_reasons"]:
+            target["close_reasons"] = [
+                "Resolvido",
+                "Usuário não respondeu",
+                "Duplicado",
+                "Encaminhado",
+                "Outro"
+            ]
+
+        target["welcome_title"] = (
+            self.welcome_title.value
+        )
+
+        target["welcome_description"] = (
+            self.welcome_description.value
+        )
+
+        target["allow_user_close"] = (
+            _t3u_bool(
+                self.allow_user_close.value
+            )
+        )
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            "✅ Configuração avançada salva.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # SELEÇÃO DE TIPOS
 # ============================================================
 
+class T3UltraTypePickerView(discord.ui.View):
+
+    def __init__(self, panel_id):
+        super().__init__(timeout=300)
+
+        self.panel_id = str(panel_id)
+
+        panel = _t3u_panel(panel_id) or {}
+
+        options = []
+
+        for ticket_type in panel.get(
+            "types",
+            []
+        )[:25]:
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        ticket_type.get(
+                            "name",
+                            "Atendimento"
+                        )
+                    )[:100],
+                    description=str(
+                        ticket_type.get(
+                            "description",
+                            ""
+                        )
+                    )[:100],
+                    emoji=ticket_type.get(
+                        "emoji",
+                        "🎫"
+                    ),
+                    value=str(
+                        ticket_type.get("id")
+                    )
+                )
+            )
+
+        if not options:
+
+            options.append(
+                discord.SelectOption(
+                    label="Nenhum tipo",
+                    value="none",
+                    emoji="⚠️"
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="🎫 Escolha um tipo...",
+            options=options
+        )
+
+        async def callback(interaction):
+
+            value = select.values[0]
+
+            if value == "none":
+                return await interaction.response.send_message(
+                    "❌ Nenhum tipo configurado.",
+                    ephemeral=True
+                )
+
+            await interaction.response.send_message(
+                "🎫 **Editor do tipo**",
+                view=T3UltraTypeEditorView(
+                    self.panel_id,
+                    value
+                ),
+                ephemeral=True
+            )
+
+        select.callback = callback
+        self.add_item(select)
+
+        @discord.ui.button(
+            label="➕ Novo tipo",
+            emoji="➕",
+            style=discord.ButtonStyle.success,
+            row=1
+        )
+        async def new_type(interaction, button):
+
+            await interaction.response.send_modal(
+                T3UltraTypeModal(
+                    self.panel_id
+                )
+            )
 
 
 # ============================================================
 # EDITOR ULTRA DO PAINEL
 # ============================================================
 
+class T3EditorView(
+    discord.ui.View
+):
+
+    def __init__(self, panel_id):
+        super().__init__(timeout=600)
+
+        self.panel_id = str(panel_id)
+
+    @discord.ui.button(
+        label="🎨 Aparência",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def appearance(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraAppearanceModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="🖼️ Imagens",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def images(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraMediaModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="📍 Canais",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def channels(self, interaction, button):
+
+        await interaction.response.send_message(
+            "📍 **Destinos do painel**\n\n"
+            "Selecione diretamente os canais abaixo. "
+            "Não é necessário copiar nenhum ID.",
+            view=T3UltraDestinationView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="👮 Equipe",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def team(self, interaction, button):
+
+        await interaction.response.send_message(
+            "👮 **Equipe responsável**\n\n"
+            "Selecione o cargo diretamente.",
+            view=T3UltraTeamView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🎫 Tipos",
+        style=discord.ButtonStyle.success,
+        row=1
+    )
+    async def types(self, interaction, button):
+
+        await interaction.response.send_message(
+            "🎫 **Tipos de atendimento**",
+            view=T3UltraTypePickerView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="📝 Formulários",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def forms(self, interaction, button):
+
+        await interaction.response.send_message(
+            "📝 Primeiro escolha o tipo:",
+            view=T3UltraTypePickerView(
+                self.panel_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="⚙️ Comportamento",
+        style=discord.ButtonStyle.secondary,
+        row=2
+    )
+    async def behavior(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraBehaviorModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="🧩 Avançado",
+        style=discord.ButtonStyle.secondary,
+        row=2
+    )
+    async def advanced(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraAdvancedModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="➕ Novo tipo",
+        style=discord.ButtonStyle.success,
+        row=2
+    )
+    async def add_type(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraTypeModal(
+                self.panel_id
+            )
+        )
+
+    @discord.ui.button(
+        label="🚀 Publicar / Atualizar",
+        style=discord.ButtonStyle.success,
+        row=3
+    )
+    async def publish(self, interaction, button):
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        channel = t3_channel(
+            interaction.guild,
+            panel.get("panel_channel_id")
+        )
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+            return await interaction.response.send_message(
+                "❌ Selecione primeiro o canal do painel em **📍 Canais**.",
+                ephemeral=True
+            )
+
+        view = T3PanelView(panel)
+
+        message_id = panel.get(
+            "panel_message_id"
+        )
+
+        # Tenta atualizar a mensagem existente
+        if message_id:
+
+            try:
+
+                message = await channel.fetch_message(
+                    int(message_id)
+                )
+
+                await message.edit(
+                    embed=t3_panel_embed(panel),
+                    view=view
+                )
+
+                await interaction.response.send_message(
+                    f"✅ Painel atualizado em {channel.mention}.",
+                    ephemeral=True
+                )
+
+                return
+
+            except Exception:
+                pass
+
+        # Caso a mensagem não exista mais, publica novamente
+        message = await channel.send(
+            embed=t3_panel_embed(panel),
+            view=view
+        )
+
+        panel["panel_message_id"] = message.id
+
+        t3_save(data)
+
+        try:
+            bot.add_view(
+                T3PanelView(panel)
+            )
+        except Exception:
+            pass
+
+        await interaction.response.send_message(
+            f"🚀 Painel publicado em {channel.mention}.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🔄 Atualizar editor",
+        style=discord.ButtonStyle.secondary,
+        row=3
+    )
+    async def refresh(self, interaction, button):
+
+        panel = _t3u_panel(
+            self.panel_id
+        ) or {}
+
+        embed = discord.Embed(
+            title="🎫 Ticket V3 • Editor Ultra",
+            description=(
+                f"**{panel.get('name', 'Painel')}**\n\n"
+                "Configure tudo visualmente usando os menus abaixo.\n\n"
+                "🟢 **Seletores:** cargos, canais e categorias\n"
+                "🎨 **Aparência:** identidade visual\n"
+                "🎫 **Tipos:** departamentos e regras\n"
+                "📝 **Formulários:** perguntas personalizadas\n"
+                "⚙️ **Comportamento:** limites e automações\n"
+                "🧩 **Avançado:** tags, motivos e mensagem inicial"
+            ),
+            color=t3_color(
+                panel.get("color")
+            )
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=T3EditorView(
+                self.panel_id
+            )
+        )
 
 
 # ============================================================
 # CRIAÇÃO VISUAL DO PAINEL
 # ============================================================
 
+class T3UltraCreateView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=600)
+
+        self.name = "Central de Atendimento"
+        self.description = (
+            "Selecione abaixo o tipo de atendimento."
+        )
+
+        self.channel_id = None
+        self.category_id = None
+        self.role_id = None
+
+        # Canal do painel
+        channel_select = discord.ui.ChannelSelect(
+            placeholder="📢 Escolha onde o painel ficará...",
+            channel_types=[discord.ChannelType.text],
+            row=0
+        )
+
+        async def channel_callback(interaction):
+
+            self.channel_id = channel_select.values[0].id
+
+            await interaction.response.send_message(
+                f"✅ Canal escolhido: {channel_select.values[0].mention}",
+                ephemeral=True
+            )
+
+        channel_select.callback = channel_callback
+        self.add_item(channel_select)
+
+        # Categoria
+        category_select = discord.ui.ChannelSelect(
+            placeholder="📁 Escolha a categoria dos tickets...",
+            channel_types=[discord.ChannelType.category],
+            row=1
+        )
+
+        async def category_callback(interaction):
+
+            self.category_id = category_select.values[0].id
+
+            await interaction.response.send_message(
+                f"✅ Categoria escolhida: {category_select.values[0].name}",
+                ephemeral=True
+            )
+
+        category_select.callback = category_callback
+        self.add_item(category_select)
+
+        # Cargo
+        role_select = discord.ui.RoleSelect(
+            placeholder="👮 Escolha o cargo da equipe...",
+            row=2
+        )
+
+        async def role_callback(interaction):
+
+            self.role_id = role_select.values[0].id
+
+            await interaction.response.send_message(
+                f"✅ Equipe escolhida: {role_select.values[0].mention}",
+                ephemeral=True
+            )
+
+        role_select.callback = role_callback
+        self.add_item(role_select)
+
+    @discord.ui.button(
+        label="📝 Nome / descrição",
+        emoji="✏️",
+        style=discord.ButtonStyle.primary,
+        row=3
+    )
+    async def information(self, interaction, button):
+
+        await interaction.response.send_modal(
+            T3UltraCreateInfoModal(self)
+        )
+
+    @discord.ui.button(
+        label="🚀 Criar painel",
+        emoji="🎫",
+        style=discord.ButtonStyle.success,
+        row=3
+    )
+    async def create(self, interaction, button):
+
+        if not self.channel_id:
+            return await interaction.response.send_message(
+                "❌ Escolha o canal do painel primeiro.",
+                ephemeral=True
+            )
+
+        data = t3_load()
+
+        panel = t3_create_panel(
+            interaction.guild
+        )
+
+        panel["name"] = self.name
+        panel["description"] = self.description
+        panel["panel_channel_id"] = self.channel_id
+        panel["default_category_id"] = self.category_id
+        panel["default_staff_role_id"] = self.role_id
+        panel["select_placeholder"] = (
+            "🎫 Selecione o tipo de atendimento..."
+        )
+
+        data["panels"][
+            panel["id"]
+        ] = panel
+
+        t3_save(data)
+
+        channel = t3_channel(
+            interaction.guild,
+            self.channel_id
+        )
+
+        message = await channel.send(
+            embed=t3_panel_embed(panel),
+            view=T3PanelView(panel)
+        )
+
+        panel["panel_message_id"] = message.id
+
+        t3_save(data)
+
+        await interaction.response.send_message(
+            f"✅ Painel criado em {channel.mention}.\n"
+            "Agora você pode personalizar tudo pelo editor.",
+            ephemeral=True
+        )
+
+        try:
+            await interaction.followup.send(
+                "🛠️ Abrindo editor...",
+                view=T3EditorView(
+                    panel["id"]
+                ),
+                ephemeral=True
+            )
+        except Exception:
+            pass
 
 
+class T3UltraCreateInfoModal(discord.ui.Modal):
+
+    def __init__(self, view):
+        super().__init__(
+            title="📝 Informações do painel"
+        )
+
+        self.parent_view = view
+
+        self.name = discord.ui.TextInput(
+            label="Nome do painel",
+            default=view.name[:100],
+            max_length=100
+        )
+
+        self.description = discord.ui.TextInput(
+            label="Descrição",
+            style=discord.TextStyle.paragraph,
+            default=view.description[:1000],
+            max_length=1000
+        )
+
+        self.add_item(self.name)
+        self.add_item(self.description)
+
+    async def on_submit(self, interaction):
+
+        self.parent_view.name = (
+            self.name.value.strip()
+            or "Central de Atendimento"
+        )
+
+        self.parent_view.description = (
+            self.description.value
+        )
+
+        await interaction.response.send_message(
+            "✅ Nome e descrição definidos.",
+            ephemeral=True
+        )
 
 
 # ============================================================
 # ADMIN V3 ULTRA
 # ============================================================
 
+class T3AdminView(
+    discord.ui.View
+):
+
+    def __init__(self):
+        super().__init__(timeout=600)
+
+    @discord.ui.button(
+        label="➕ Criar painel",
+        emoji="🎫",
+        style=discord.ButtonStyle.success,
+        row=0
+    )
+    async def create(self, interaction, button):
+
+        await interaction.response.send_message(
+            "🎫 **Criador visual de painel**\n\n"
+            "Agora você pode selecionar diretamente "
+            "o canal, categoria e cargo.\n\n"
+            "Nenhum ID é necessário.",
+            view=T3UltraCreateView(),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🎨 Gerenciar painéis",
+        emoji="🛠️",
+        style=discord.ButtonStyle.primary,
+        row=0
+    )
+    async def manage(self, interaction, button):
+
+        data = t3_load()
+
+        panels = [
+            panel
+            for panel in data["panels"].values()
+            if str(
+                panel.get("guild_id")
+            ) == str(
+                interaction.guild.id
+            )
+        ]
+
+        if not panels:
+            return await interaction.response.send_message(
+                "📭 Nenhum painel criado.",
+                ephemeral=True
+            )
+
+        options = []
+
+        for panel in panels[:25]:
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        panel.get(
+                            "name",
+                            "Painel"
+                        )
+                    )[:100],
+                    description=(
+                        f"{len(panel.get('types', []))} "
+                        "tipo(s)"
+                    )[:100],
+                    emoji="🎫",
+                    value=str(
+                        panel["id"]
+                    )
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="🎨 Escolha o painel...",
+            options=options
+        )
+
+        view = discord.ui.View(
+            timeout=300
+        )
+
+        async def callback(select_interaction):
+
+            panel_id = select.values[0]
+
+            panel = _t3u_panel(
+                panel_id
+            )
+
+            if not panel:
+                return await select_interaction.response.send_message(
+                    "❌ Painel não encontrado.",
+                    ephemeral=True
+                )
+
+            embed = discord.Embed(
+                title="🎫 Ticket V3 • Editor Ultra",
+                description=(
+                    f"**{panel.get('name', 'Painel')}**\n\n"
+                    "Escolha o que deseja personalizar.\n\n"
+                    "🎨 Aparência\n"
+                    "📍 Canais\n"
+                    "👮 Equipe\n"
+                    "🎫 Tipos\n"
+                    "📝 Formulários\n"
+                    "⚙️ Comportamento\n"
+                    "🧩 Avançado"
+                ),
+                color=t3_color(
+                    panel.get("color")
+                )
+            )
+
+            await select_interaction.response.send_message(
+                embed=embed,
+                view=T3EditorView(panel_id),
+                ephemeral=True
+            )
+
+        select.callback = callback
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            "🎨 Selecione o painel que deseja editar:",
+            view=view,
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🗑️ Excluir",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger,
+        row=1
+    )
+    async def delete_manager(self, interaction, button):
+
+        await t3_open_delete_manager(
+            interaction
+        )
+
+    @discord.ui.button(
+        label="📊 Estatísticas",
+        emoji="📈",
+        style=discord.ButtonStyle.secondary,
+        row=0
+    )
+    async def statistics(self, interaction, button):
+
+        data = t3_load()
+
+        stats = data["stats"].get(
+            str(interaction.guild.id),
+            {}
+        )
+
+        opened = len(
+            t3_open_tickets(
+                interaction.guild.id
+            )
+        )
+
+        embed = discord.Embed(
+            title="📊 Estatísticas dos Tickets",
+            color=discord.Color.blurple()
+        )
+
+        embed.add_field(
+            name="🎫 Criados",
+            value=str(
+                stats.get(
+                    "created",
+                    0
+                )
+            ),
+            inline=True
+        )
+
+        embed.add_field(
+            name="🔒 Fechados",
+            value=str(
+                stats.get(
+                    "closed",
+                    0
+                )
+            ),
+            inline=True
+        )
+
+        embed.add_field(
+            name="🟢 Abertos",
+            value=str(opened),
+            inline=True
+        )
+
+        embed.add_field(
+            name="⭐ Avaliações",
+            value=str(
+                stats.get(
+                    "evaluations",
+                    0
+                )
+            ),
+            inline=True
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
 
 
 # ============================================================
 # SELECT DO PAINEL V3 COM PLACEHOLDER PERSONALIZADO
 # ============================================================
 
+class T3TypeSelect(
+    discord.ui.Select
+):
+
+    def __init__(self, panel):
+
+        self.panel_id = str(
+            panel["id"]
+        )
+
+        options = []
+
+        for item in panel.get(
+            "types",
+            []
+        )[:25]:
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        item.get(
+                            "name",
+                            "Atendimento"
+                        )
+                    )[:100],
+                    description=str(
+                        item.get(
+                            "description",
+                            ""
+                        )
+                    )[:100],
+                    emoji=item.get(
+                        "emoji",
+                        "🎫"
+                    ),
+                    value=str(
+                        item["id"]
+                    )
+                )
+            )
+
+        if not options:
+
+            options.append(
+                discord.SelectOption(
+                    label="Nenhum atendimento configurado",
+                    value="none",
+                    emoji="⚠️"
+                )
+            )
+
+        super().__init__(
+            placeholder=str(
+                panel.get(
+                    "select_placeholder",
+                    "🎫 Selecione o tipo de atendimento..."
+                )
+            )[:150],
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id=(
+                f"t3:type:{self.panel_id}"
+            )
+        )
+
+    async def callback(self, interaction):
+
+        panel = t3_get_panel(
+            self.panel_id
+        )
+
+        if not panel:
+            return await interaction.response.send_message(
+                "❌ Painel não encontrado.",
+                ephemeral=True
+            )
+
+        if self.values[0] == "none":
+            return await interaction.response.send_message(
+                "❌ Nenhum tipo configurado.",
+                ephemeral=True
+            )
+
+        ticket_type = t3_get_type(
+            panel,
+            self.values[0]
+        )
+
+        if not ticket_type:
+            return await interaction.response.send_message(
+                "❌ Tipo inválido.",
+                ephemeral=True
+            )
+
+        if ticket_type.get("form"):
+            return await interaction.response.send_modal(
+                T3FormModal(
+                    panel,
+                    ticket_type
+                )
+            )
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+
+            channel, _ = await t3_create_ticket(
+                interaction,
+                panel,
+                ticket_type
+            )
+
+            await interaction.followup.send(
+                f"✅ Ticket criado: {channel.mention}",
+                ephemeral=True
+            )
+
+        except Exception as exc:
+
+            await interaction.followup.send(
+                f"❌ {exc}",
+                ephemeral=True
+            )
 
 
 print("[TICKET V3 ULTRA] Customizador visual carregado.")
@@ -5399,30 +10217,691 @@ print("[TICKET V3 ULTRA] Customizador visual carregado.")
 # ============================================================
 
 
+class T3DeleteConfirmView(discord.ui.View):
+
+    def __init__(self, action, panel_id, type_id=None):
+        super().__init__(timeout=60)
+
+        self.action = action
+        self.panel_id = str(panel_id)
+        self.type_id = str(type_id) if type_id else None
+
+    @discord.ui.button(
+        label="CONFIRMAR EXCLUSÃO",
+        emoji="🗑️",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm(self, interaction, button):
+
+        if self.action == "panel":
+
+            data = t3_load()
+
+            panel = data["panels"].get(
+                self.panel_id
+            )
+
+            if not panel:
+                return await interaction.response.edit_message(
+                    content="❌ Este painel já não existe.",
+                    embed=None,
+                    view=None
+                )
+
+            # ------------------------------------------------
+            # Tenta apagar a mensagem publicada
+            # ------------------------------------------------
+
+            message_id = panel.get(
+                "panel_message_id"
+            )
+
+            channel_id = panel.get(
+                "panel_channel_id"
+            )
+
+            if message_id and channel_id:
+
+                try:
+
+                    channel = interaction.guild.get_channel(
+                        int(channel_id)
+                    )
+
+                    if channel:
+
+                        message = await channel.fetch_message(
+                            int(message_id)
+                        )
+
+                        await message.delete()
+
+                except Exception:
+                    pass
+
+            # ------------------------------------------------
+            # Remove tickets relacionados ao painel
+            # ------------------------------------------------
+
+            ticket_ids = []
+
+            for ticket_id, ticket in list(
+                data.get("tickets", {}).items()
+            ):
+
+                if str(
+                    ticket.get("panel_id")
+                ) == self.panel_id:
+
+                    ticket_ids.append(
+                        ticket_id
+                    )
+
+            for ticket_id in ticket_ids:
+
+                data["tickets"].pop(
+                    ticket_id,
+                    None
+                )
+
+                data["evaluations"].pop(
+                    ticket_id,
+                    None
+                )
+
+            # ------------------------------------------------
+            # Remove painel
+            # ------------------------------------------------
+
+            data["panels"].pop(
+                self.panel_id,
+                None
+            )
+
+            t3_save(data)
+
+            await interaction.response.edit_message(
+                content=(
+                    "🗑️ **Painel excluído com sucesso.**\n\n"
+                    "A configuração, tipos e mensagem "
+                    "publicada foram removidos."
+                ),
+                embed=None,
+                view=None
+            )
+
+            return
+
+        # ====================================================
+        # EXCLUIR TIPO
+        # ====================================================
+
+        if self.action == "type":
+
+            data = t3_load()
+
+            panel = data["panels"].get(
+                self.panel_id
+            )
+
+            if not panel:
+                return await interaction.response.edit_message(
+                    content="❌ Painel não encontrado.",
+                    embed=None,
+                    view=None
+                )
+
+            types = panel.get(
+                "types",
+                []
+            )
+
+            original_length = len(types)
+
+            panel["types"] = [
+                item
+                for item in types
+                if str(
+                    item.get("id")
+                ) != self.type_id
+            ]
+
+            if len(panel["types"]) == original_length:
+
+                return await interaction.response.edit_message(
+                    content="❌ Tipo não encontrado.",
+                    embed=None,
+                    view=None
+                )
+
+            t3_save(data)
+
+            await interaction.response.edit_message(
+                content=(
+                    "🗑️ **Tipo excluído com sucesso.**\n\n"
+                    "O tipo, formulário, regras e "
+                    "configurações dele foram removidos."
+                ),
+                embed=None,
+                view=None
+            )
+
+            return
+
+    @discord.ui.button(
+        label="Cancelar",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def cancel(self, interaction, button):
+
+        await interaction.response.edit_message(
+            content="❎ Exclusão cancelada.",
+            embed=None,
+            view=None
+        )
 
 
 # ============================================================
 # GERENCIADOR DE TIPOS
 # ============================================================
 
+class T3DeleteTypePickerView(discord.ui.View):
+
+    def __init__(self, panel_id):
+        super().__init__(timeout=180)
+
+        self.panel_id = str(panel_id)
+
+        data = t3_load()
+
+        panel = data["panels"].get(
+            self.panel_id
+        )
+
+        options = []
+
+        if panel:
+
+            for ticket_type in panel.get(
+                "types",
+                []
+            )[:25]:
+
+                options.append(
+                    discord.SelectOption(
+                        label=str(
+                            ticket_type.get(
+                                "name",
+                                "Tipo"
+                            )
+                        )[:100],
+                        description=(
+                            "Excluir este tipo de atendimento"
+                        ),
+                        emoji=ticket_type.get(
+                            "emoji",
+                            "🎫"
+                        ),
+                        value=str(
+                            ticket_type.get("id")
+                        )
+                    )
+                )
+
+        if not options:
+
+            options.append(
+                discord.SelectOption(
+                    label="Nenhum tipo disponível",
+                    value="none",
+                    emoji="⚠️"
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="🗑️ Escolha o tipo para excluir...",
+            options=options
+        )
+
+        async def callback(interaction):
+
+            type_id = select.values[0]
+
+            if type_id == "none":
+
+                return await interaction.response.send_message(
+                    "❌ Não existem tipos para excluir.",
+                    ephemeral=True
+                )
+
+            panel = t3_load()["panels"].get(
+                self.panel_id
+            )
+
+            ticket_type = t3_get_type(
+                panel,
+                type_id
+            )
+
+            if not ticket_type:
+
+                return await interaction.response.send_message(
+                    "❌ Tipo não encontrado.",
+                    ephemeral=True
+                )
+
+            name = ticket_type.get(
+                "name",
+                "Tipo"
+            )
+
+            embed = discord.Embed(
+                title="⚠️ Confirmar exclusão",
+                description=(
+                    f"Você está prestes a excluir:\n\n"
+                    f"🎫 **{name}**\n\n"
+                    "Isso removerá permanentemente:\n"
+                    "• o tipo\n"
+                    "• formulário\n"
+                    "• cargo específico\n"
+                    "• categoria específica\n"
+                    "• SLA\n"
+                    "• limites\n"
+                    "• tags\n"
+                    "• motivos de fechamento\n\n"
+                    "**Essa ação não pode ser desfeita.**"
+                ),
+                color=discord.Color.red()
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                view=T3DeleteConfirmView(
+                    "type",
+                    self.panel_id,
+                    type_id
+                ),
+                ephemeral=True
+            )
+
+        select.callback = callback
+
+        self.add_item(select)
 
 
 # ============================================================
 # GERENCIADOR DE PAINÉIS
 # ============================================================
 
+class T3DeletePanelPickerView(discord.ui.View):
+
+    def __init__(self, guild_id):
+        super().__init__(timeout=180)
+
+        self.guild_id = int(guild_id)
+
+        data = t3_load()
+
+        options = []
+
+        for panel in data.get(
+            "panels",
+            {}
+        ).values():
+
+            if str(
+                panel.get("guild_id")
+            ) != str(
+                self.guild_id
+            ):
+                continue
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        panel.get(
+                            "name",
+                            "Painel"
+                        )
+                    )[:100],
+                    description=(
+                        f"{len(panel.get('types', []))} "
+                        "tipo(s) configurado(s)"
+                    )[:100],
+                    emoji="🗑️",
+                    value=str(
+                        panel.get("id")
+                    )
+                )
+            )
+
+            if len(options) >= 25:
+                break
+
+        if not options:
+
+            options.append(
+                discord.SelectOption(
+                    label="Nenhum painel encontrado",
+                    value="none",
+                    emoji="⚠️"
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="🗑️ Escolha o painel para excluir...",
+            options=options
+        )
+
+        async def callback(interaction):
+
+            panel_id = select.values[0]
+
+            if panel_id == "none":
+
+                return await interaction.response.send_message(
+                    "❌ Não existem painéis para excluir.",
+                    ephemeral=True
+                )
+
+            data = t3_load()
+
+            panel = data["panels"].get(
+                panel_id
+            )
+
+            if not panel:
+
+                return await interaction.response.send_message(
+                    "❌ Painel não encontrado.",
+                    ephemeral=True
+                )
+
+            types_count = len(
+                panel.get(
+                    "types",
+                    []
+                )
+            )
+
+            embed = discord.Embed(
+                title="⚠️ EXCLUIR PAINEL",
+                description=(
+                    f"Você está prestes a excluir:\n\n"
+                    f"🎫 **{panel.get('name', 'Painel')}**\n\n"
+                    f"📋 Tipos: **{types_count}**\n\n"
+                    "Também serão removidos:\n"
+                    "• configuração do painel\n"
+                    "• todos os tipos\n"
+                    "• formulários\n"
+                    "• configurações avançadas\n"
+                    "• avaliações relacionadas\n"
+                    "• mensagem publicada do painel\n\n"
+                    "**Essa ação não pode ser desfeita.**"
+                ),
+                color=discord.Color.red()
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                view=T3DeleteConfirmView(
+                    "panel",
+                    panel_id
+                ),
+                ephemeral=True
+            )
+
+        select.callback = callback
+
+        self.add_item(select)
 
 
 # ============================================================
 # VIEW DE GERENCIAMENTO
 # ============================================================
 
+class T3DeleteManagerView(discord.ui.View):
+
+    def __init__(self, guild_id):
+        super().__init__(timeout=300)
+
+        self.guild_id = int(guild_id)
+
+    @discord.ui.button(
+        label="🗑️ Excluir painel",
+        emoji="🎫",
+        style=discord.ButtonStyle.danger,
+        row=0
+    )
+    async def delete_panel(self, interaction, button):
+
+        await interaction.response.send_message(
+            "🗑️ **Excluir painel**\n\n"
+            "Selecione o painel que deseja remover:",
+            view=T3DeletePanelPickerView(
+                self.guild_id
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🗑️ Excluir tipo",
+        emoji="🎫",
+        style=discord.ButtonStyle.danger,
+        row=0
+    )
+    async def delete_type(self, interaction, button):
+
+        data = t3_load()
+
+        panels = [
+            panel
+            for panel in data.get(
+                "panels",
+                {}
+            ).values()
+            if str(
+                panel.get("guild_id")
+            ) == str(
+                self.guild_id
+            )
+        ]
+
+        if not panels:
+
+            return await interaction.response.send_message(
+                "❌ Você não possui painéis configurados.",
+                ephemeral=True
+            )
+
+        options = []
+
+        for panel in panels[:25]:
+
+            options.append(
+                discord.SelectOption(
+                    label=str(
+                        panel.get(
+                            "name",
+                            "Painel"
+                        )
+                    )[:100],
+                    description=(
+                        f"{len(panel.get('types', []))} tipo(s)"
+                    )[:100],
+                    emoji="🎫",
+                    value=str(
+                        panel.get("id")
+                    )
+                )
+            )
+
+        select = discord.ui.Select(
+            placeholder="🎫 Primeiro escolha o painel...",
+            options=options
+        )
+
+        view = discord.ui.View(
+            timeout=180
+        )
+
+        async def callback(select_interaction):
+
+            panel_id = select.values[0]
+
+            await select_interaction.response.send_message(
+                "🗑️ Agora escolha o tipo:",
+                view=T3DeleteTypePickerView(
+                    panel_id
+                ),
+                ephemeral=True
+            )
+
+        select.callback = callback
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            "🎫 Selecione o painel:",
+            view=view,
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="🧹 Limpar formulário",
+        emoji="📝",
+        style=discord.ButtonStyle.secondary,
+        row=1
+    )
+    async def clear_form(self, interaction, button):
+
+        data = t3_load()
+
+        panels = [
+            panel
+            for panel in data.get(
+                "panels",
+                {}
+            ).values()
+            if str(
+                panel.get("guild_id")
+            ) == str(
+                self.guild_id
+            )
+        ]
+
+        options = []
+
+        for panel in panels[:25]:
+
+            for ticket_type in panel.get(
+                "types",
+                []
+            )[:25]:
+
+                options.append(
+                    discord.SelectOption(
+                        label=str(
+                            ticket_type.get(
+                                "name",
+                                "Tipo"
+                            )
+                        )[:100],
+                        description=(
+                            f"Painel: "
+                            f"{panel.get('name', 'Painel')}"
+                        )[:100],
+                        emoji="📝",
+                        value=(
+                            f"{panel['id']}:"
+                            f"{ticket_type['id']}"
+                        )
+                    )
+                )
+
+                if len(options) >= 25:
+                    break
+
+        if not options:
+
+            return await interaction.response.send_message(
+                "❌ Nenhum tipo encontrado.",
+                ephemeral=True
+            )
+
+        select = discord.ui.Select(
+            placeholder="🧹 Escolha o formulário para limpar...",
+            options=options
+        )
+
+        view = discord.ui.View(
+            timeout=180
+        )
+
+        async def callback(select_interaction):
+
+            panel_id, type_id = select.values[0].split(
+                ":",
+                1
+            )
+
+            data = t3_load()
+
+            panel = data["panels"].get(
+                panel_id
+            )
+
+            ticket_type = t3_get_type(
+                panel,
+                type_id
+            )
+
+            if not ticket_type:
+
+                return await select_interaction.response.send_message(
+                    "❌ Tipo não encontrado.",
+                    ephemeral=True
+                )
+
+            ticket_type["form"] = []
+
+            t3_save(data)
+
+            await select_interaction.response.send_message(
+                "🧹 **Formulário limpo.**\n"
+                "Todas as perguntas foram removidas.",
+                ephemeral=True
+            )
+
+        select.callback = callback
+
+        view.add_item(select)
+
+        await interaction.response.send_message(
+            "📝 Escolha o tipo:",
+            view=view,
+            ephemeral=True
+        )
 
 
 # ============================================================
 # BOTÃO PARA ADICIONAR AO EDITOR EXISTENTE
 # ============================================================
 
+async def t3_open_delete_manager(
+    interaction
+):
+
+    await interaction.response.send_message(
+        "🗑️ **Gerenciamento de exclusão**\n\n"
+        "Aqui você pode remover painéis, tipos "
+        "e formulários sem precisar mexer em IDs.",
+        view=T3DeleteManagerView(
+            interaction.guild.id
+        ),
+        ephemeral=True
+    )
 
 
 print("[TICKET V3] Gerenciador de exclusão carregado.")
@@ -5476,15 +10955,6 @@ if legacy_settings and (not data['guild_settings']):
     if known_guild_ids:
         data['guild_settings'][sorted(known_guild_ids)[0]] = {'max_tickets_per_user': legacy_settings.get('max_tickets_per_user', 1), 'log_channels': legacy_settings.get('log_channels', {}), 'daily_reward': legacy_settings.get('daily_reward', 500), 'timeclock_channel_id': legacy_settings.get('timeclock_channel_id'), 'default_staff_role_id': legacy_settings.get('default_staff_role_id'), 'default_log_channel_id': legacy_settings.get('default_log_channel_id')}
         save_data()
-
-# ============================================================
-# SISTEMA — GRUPO DOS SISTEMAS COMPLETOS
-# ============================================================
-
-sistemas_group = app_commands.Group(
-    name="sistema",
-    description="Sistemas avançados do servidor."
-)
 
 # >>> SISTEMAS COMPLETOS V1 >>>
 # ============================================================
@@ -5667,7 +11137,7 @@ async def adv_log(
 # 🛡️ MODERAÇÃO
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="ban",
     description="Bane um membro do servidor."
 )
@@ -5722,7 +11192,7 @@ async def sistema_ban(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="kick",
     description="Expulsa um membro."
 )
@@ -5770,7 +11240,7 @@ async def sistema_kick(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="clear",
     description="Apaga mensagens do canal."
 )
@@ -5809,7 +11279,7 @@ async def sistema_clear(
 # ⚠️ WARNINGS
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="warn",
     description="Adverte um membro."
 )
@@ -5870,7 +11340,7 @@ async def sistema_warn(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="warns",
     description="Consulta as advertências de um membro."
 )
@@ -5924,7 +11394,7 @@ async def sistema_warns(
 # 👋 BOAS-VINDAS
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="boasvindas",
     description="Configura o sistema de boas-vindas."
 )
@@ -5955,7 +11425,7 @@ async def sistema_boasvindas(
 # 🎭 AUTOROLE
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="autorole",
     description="Define o cargo automático."
 )
@@ -6047,7 +11517,7 @@ class SistemaVerificationView(
         )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="verificacao_nova",
     description="Publica um painel de verificação."
 )
@@ -6094,7 +11564,7 @@ async def sistema_verificacao(
 # 🔗 CONVITES
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="convites",
     description="Mostra seus convites registrados."
 )
@@ -6143,7 +11613,7 @@ async def sistema_convites(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="ranking_convites",
     description="Mostra o ranking de convites."
 )
@@ -6236,7 +11706,7 @@ def sistema_xp_required(level):
 
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="sugestao",
     description="Envia uma sugestão."
 )
@@ -6293,7 +11763,7 @@ async def sistema_sugestao(
 # 🤖 GERENCIAMENTO DE BOTS
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="bot_whitelist",
     description="Gerencia a whitelist de bots."
 )
@@ -6352,7 +11822,7 @@ async def sistema_bot_whitelist(
 
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="userinfo",
     description="Mostra informações de um usuário."
 )
@@ -6408,7 +11878,7 @@ async def sistema_userinfo(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="serverinfo",
     description="Mostra informações do servidor."
 )
@@ -6475,7 +11945,7 @@ async def sistema_serverinfo(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="roleinfo",
     description="Mostra informações de um cargo."
 )
@@ -6529,7 +11999,7 @@ async def sistema_roleinfo(
     )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="channelinfo",
     description="Mostra informações do canal."
 )
@@ -6649,7 +12119,7 @@ class SistemaConfigView(
         )
 
 
-@sistemas_group.command(
+@bot.tree.command(
     name="config",
     description="Abre a central de configuração."
 )
@@ -6715,7 +12185,7 @@ async def sistema_config(
 # 📋 LOGS AVANÇADOS
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="logs_config",
     description="Define o canal de logs avançados."
 )
@@ -6744,7 +12214,7 @@ async def sistema_logs_config(
 # 🛡️ SEGURANÇA AVANÇADA
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="seguranca_scan_avancado",
     description="Analisa configurações perigosas do servidor."
 )
@@ -6810,7 +12280,7 @@ async def sistema_security_scan(
 # 📊 MODERAÇÃO — HISTÓRICO
 # ============================================================
 
-@sistemas_group.command(
+@bot.tree.command(
     name="modlogs",
     description="Mostra o histórico de moderação de um membro."
 )
@@ -6870,136 +12340,8 @@ async def sistema_modlogs(
 # EVENTO: NOVO MEMBRO
 # ============================================================
 
-
-
-# ============================================================
-# EVENTO: MENSAGENS → XP + AUT0MOD BÁSICO
-# ============================================================
-
-
-
-# ============================================================
-# SETUP PERSISTENTE
-# ============================================================
-
-async def _sistemas_setup():
-    try:
-        bot.add_view(
-            SistemaVerificationView()
-        )
-    except Exception:
-        pass
-
-    try:
-        # Garante que o banco adicional seja salvo.
-        save_data()
-    except Exception:
-        pass
-
-
-# <<< SISTEMAS COMPLETOS V1 <<<
-
-# Registra o grupo /sistema somente uma vez.
-if not any(
-    getattr(command, "name", None) == "sistema"
-    for command in bot.tree.get_commands()
-):
-    bot.tree.add_command(sistemas_group)
-
-
-
-async def setup_hook():
-    await _sistemas_setup()
-    bot.add_view(ClockView())
-    bot.add_view(VerificationView())
-    for guild_record in data['timeclock'].values():
-        for user_id in guild_record.get('active', {}):
-            bot.add_view(ClockControlView(int(user_id)))
-    for poll_id, poll in data['polls'].items():
-        if poll.get('open'):
-            bot.add_view(PollView(poll_id))
-
-async def synchronize_commands():
-    """Sincroniza todos os comandos globalmente."""
-    try:
-        synced = await bot.tree.sync()
-        await initialize_ticket_v3()
-        print('[TICKET V3] Inicializado com sucesso.')
-        print(f'[SLASH] {len(synced)} comandos globais sincronizados.')
-    except discord.HTTPException as error:
-        print(f'[SLASH] Erro ao sincronizar comandos globais: {type(error).__name__}: {error}')
-bot.setup_hook = setup_hook
-token = os.getenv('DISCORD_TOKEN')
-if not token:
-    raise RuntimeError('Defina a variável de ambiente DISCORD_TOKEN antes de iniciar o bot.')
-# AURA: bot.run movido para o final pelo atualizador
-# ============================================================
-# 🎫 TICKET V3 — VIEW PERSISTENTE
-# ============================================================
-
-def _register_ticket_persistent_view():
-    """
-    Registra a View do painel de tickets após o carregamento.
-    """
-
-    for class_name in (
-        "TicketView",
-        "TicketPanelView",
-        "TicketSelectView",
-    ):
-        cls = globals().get(class_name)
-
-        if cls is None:
-            continue
-
-        try:
-            bot.add_view(cls())
-            print(f"[TICKET V3] View persistente registrada: {class_name}")
-            return
-        except Exception as exc:
-            print(
-                f"[TICKET V3] Não foi possível registrar "
-                f"{class_name}: {exc}"
-            )
-
-
-
-# ============================================================
-# 🚀 AURA — EXECUÇÃO FINAL
-# ============================================================
-async def _aura_source_on_member_join_1(member):
-    security = security_config(member.guild.id)
-    banned_actors = {int(user_id) for user_id in security.get('banned_actors', [])}
-    if member.id in banned_actors:
-        try:
-            await member.guild.ban(member, reason='Anti-raid: atacante anteriormente banido retornou ao servidor', delete_message_seconds=0)
-        except discord.Forbidden:
-            pass
-        except discord.HTTPException:
-            pass
-        return
-    verification = verification_config(member.guild.id)
-    if verification.get('enabled') and member.bot and (member.id != (bot.user.id if bot.user else 0)) and (member.id not in {int(user_id) for user_id in verification.get('allowed_bots', [])}):
-        try:
-            await member.kick(reason='Bot não autorizado pela verificação padrão')
-            await internal_log('bot bloqueado', f'Bot não autorizado {member} (`{member.id}`) foi expulso.', member.guild, 'ERROR')
-        except discord.HTTPException as error:
-            await internal_log('falha ao bloquear bot', f'Não foi possível expulsar {member} (`{member.id}`): {error}', member.guild, 'ERROR')
-        return
-    autorole_id = guild_settings(member.guild.id).get('autorole_id')
-    autorole = member.guild.get_role(int(autorole_id)) if autorole_id else None
-    if autorole:
-        try:
-            await member.add_roles(autorole, reason='Autorole configurado no servidor')
-        except discord.HTTPException:
-            pass
-    inviter = await identify_inviter(member.guild)
-    inviter_text = inviter.mention if inviter else 'Não identificado (sem permissão para ler convites)'
-    await audit_log(member.guild, 'membros', 'Membro entrou no servidor', member, member.mention)
-    await send_server_event(member.guild, 'welcome_channel_id', '👋 Novo membro no servidor', f'Boas-vindas, {member.mention}!', discord.Color.green(), [('Usuário', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
-    await send_server_event(member.guild, 'invite_channel_id', '📨 Convite utilizado', f'{member.mention} entrou no servidor.', discord.Color.blue(), [('Convidado', f'{member} ({member.id})'), ('Convidado por', inviter_text)])
-
-async def _aura_source_on_member_join_2(member):
+@bot.event
+async def on_member_join(member):
     try:
         config = adv_guild(
             member.guild.id
@@ -7074,56 +12416,13 @@ async def _aura_source_on_member_join_2(member):
             f"[SISTEMAS] Erro on_member_join: {exc!r}"
         )
 
+
+# ============================================================
+# EVENTO: MENSAGENS → XP + AUT0MOD BÁSICO
+# ============================================================
+
 @bot.event
-async def on_member_join(member):
-    for _handler_name in ("_aura_source_on_member_join_1", "_aura_source_on_member_join_2"):
-        _handler = globals().get(_handler_name)
-        if callable(_handler):
-            try:
-                await _handler(member)
-            except Exception as _exc:
-                print(f"[AURA EVENT] {_handler_name}: {_exc!r}", flush=True)
-
-async def _aura_source_on_message_1(message):
-    if message.author.bot or not message.guild:
-        return
-    if await process_automod(message):
-        return
-    if protected_channel_matches(message):
-        print(f'[SEGURANCA] Mensagem recebida no canal protegido: {message.author} ({message.author.id})')
-        try:
-            await message.delete(reason='Canal protegido contra contas comprometidas')
-        except discord.Forbidden:
-            delete_error = 'o bot não possui Gerenciar mensagens'
-        except discord.HTTPException as error:
-            delete_error = f'falha ao apagar a mensagem ({error})'
-        except Exception as error:
-            delete_error = f'falha inesperada ao apagar ({type(error).__name__}: {error})'
-            print(f'[SEGURANCA] Erro ao apagar mensagem: {type(error).__name__}: {error}')
-        else:
-            delete_error = 'mensagem apagada'
-        try:
-            banned, result = await ban_protected_author(message)
-        except Exception as error:
-            banned = False
-            result = f'falha inesperada no ban ({type(error).__name__}: {error})'
-            print(f'[SEGURANCA] Erro ao banir autor: {type(error).__name__}: {error}')
-        await audit_log(message.guild, 'seguranca', 'Ação no canal protegido', message.author, f'Canal: {message.channel.mention}; {delete_error}; resultado do ban: {result}')
-        if not banned and result != 'usuário imune':
-            alert = security_config(message.guild.id).get('alert_channel_id')
-            alert_channel = message.guild.get_channel(int(alert)) if alert else message.guild.system_channel
-            if alert_channel:
-                try:
-                    await alert_channel.send(f'⚠️ Ação no canal protegido para {message.author.mention}: {delete_error}; {result}. Verifique as permissões e a posição do cargo do bot.')
-                except discord.HTTPException:
-                    pass
-        return
-    leveled_up, level = grant_message_xp(message.guild.id, message.author.id)
-    if leveled_up:
-        await message.channel.send(f'🎉 {message.author.mention} alcançou o nível **{level}**!', delete_after=10)
-    await bot.process_commands(message)
-
-async def _aura_source_on_message_2(message):
+async def on_message(message):
     if message.author.bot:
         return
 
@@ -7258,4921 +12557,50 @@ async def _aura_source_on_message_2(message):
         message
     )
 
-@bot.event
-async def on_message(message):
-    if getattr(message.author, "bot", False):
-        return
-    if not getattr(message, "guild", None):
-        _secondary = globals().get("_aura_source_on_message_2")
-        if callable(_secondary):
-            await _secondary(message)
-        return
-    _primary = globals().get("_aura_source_on_message_1")
-    _secondary = globals().get("_aura_source_on_message_2")
-    if callable(_primary):
-        await _primary(message)
-    if callable(_secondary):
-        try:
-            await _secondary(message)
-        except Exception as _exc:
-            print(f"[AURA EVENT] secondary on_message: {_exc!r}", flush=True)
-
-
 
 # ============================================================
-# AURA PROFESSIONAL PATCH v4
+# SETUP PERSISTENTE
 # ============================================================
 
-_AURA_PATCH_VERSION = "4.0"
-_AURA_PATCH_VIEW_CACHE = set()
-
-
-def _aura_patch_log(message):
+async def _sistemas_setup():
     try:
-        print(f"[AURA PATCH] {message}", flush=True)
-    except Exception:
-        pass
-
-
-# ------------------------- DATA SAFETY -----------------------
-try:
-    _aura_old_save_data = globals().get("save_data")
-    if callable(_aura_old_save_data) and not getattr(_aura_old_save_data, "_aura_atomic", False):
-        def _aura_atomic_save_data():
-            try:
-                _path = Path(globals().get("DATA_FILE", "ticket_panels.json"))
-                _payload = json.dumps(globals().get("data", {}), indent=2, ensure_ascii=False)
-                _tmp = _path.with_suffix(_path.suffix + ".tmp")
-                _tmp.write_text(_payload, encoding="utf-8")
-                os.replace(_tmp, _path)
-            except Exception as _exc:
-                _aura_patch_log(f"save_data: {_exc!r}")
-        _aura_atomic_save_data._aura_atomic = True
-        globals()["save_data"] = _aura_atomic_save_data
-except Exception as _exc:
-    _aura_patch_log(f"data layer: {_exc!r}")
-
-
-# ------------------------- TICKET SELECT ---------------------
-try:
-    _aura_select_cls = globals().get("T3TypeSelect")
-    _aura_select_original = getattr(_aura_select_cls, "callback", None) if _aura_select_cls else None
-    if callable(_aura_select_original) and not getattr(_aura_select_original, "_aura_reset", False):
-        async def _aura_select_callback(self, interaction):
-            try:
-                return await _aura_select_original(self, interaction)
-            finally:
-                try:
-                    _message = getattr(interaction, "message", None)
-                    _panel_get = globals().get("t3_get_panel")
-                    _panel_view = globals().get("T3PanelView")
-                    if _message and callable(_panel_get) and callable(_panel_view):
-                        _panel = _panel_get(str(getattr(self, "panel_id", "")))
-                        if _panel:
-                            await _message.edit(view=_panel_view(_panel))
-                except Exception as _exc:
-                    _aura_patch_log(f"ticket select reset: {_exc!r}")
-        _aura_select_callback._aura_reset = True
-        _aura_select_cls.callback = _aura_select_callback
-except Exception as _exc:
-    _aura_patch_log(f"ticket select patch: {_exc!r}")
-
-
-# ------------------------- PERSISTENT VIEWS ------------------
-async def _aura_restore_views_safe():
-    try:
-        _bot = globals().get("bot")
-        _load = globals().get("t3_load")
-        _panel_cls = globals().get("T3PanelView")
-        _ticket_cls = globals().get("T3TicketView")
-        if not _bot or not callable(_load):
-            return
-        _data = _load()
-        if callable(_panel_cls):
-            for _panel in _data.get("panels", {}).values():
-                _mid = _panel.get("panel_message_id")
-                if not _mid:
-                    continue
-                _key = ("panel", int(_mid))
-                if _key in _AURA_PATCH_VIEW_CACHE:
-                    continue
-                try:
-                    _bot.add_view(_panel_cls(_panel), message_id=int(_mid))
-                    _AURA_PATCH_VIEW_CACHE.add(_key)
-                except Exception:
-                    pass
-        if callable(_ticket_cls):
-            for _tid, _ticket in _data.get("tickets", {}).items():
-                if _ticket.get("closed"):
-                    continue
-                _mid = _ticket.get("message_id")
-                if not _mid:
-                    continue
-                _key = ("ticket", int(_mid))
-                if _key in _AURA_PATCH_VIEW_CACHE:
-                    continue
-                try:
-                    _bot.add_view(_ticket_cls(str(_tid)), message_id=int(_mid))
-                    _AURA_PATCH_VIEW_CACHE.add(_key)
-                except Exception:
-                    pass
-        for _name in ("VerificationView", "ClockView"):
-            _cls = globals().get(_name)
-            _key = ("global", _name)
-            if callable(_cls) and _key not in _AURA_PATCH_VIEW_CACHE:
-                try:
-                    _bot.add_view(_cls())
-                    _AURA_PATCH_VIEW_CACHE.add(_key)
-                except Exception:
-                    pass
-    except Exception as _exc:
-        _aura_patch_log(f"persistent views: {_exc!r}")
-
-globals()["_aura_restore_persistent_views"] = _aura_restore_views_safe
-
-
-# ------------------------- COMMUNITY XP ----------------------
-async def _aura_extra_xp(message):
-    try:
-        if getattr(message.author, "bot", False) or not getattr(message, "guild", None):
-            return False
-        _adv = globals().get("adv_guild")
-        _record_fn = globals().get("sistema_xp_record")
-        _required = globals().get("sistema_xp_required")
-        if not all(callable(x) for x in (_adv, _record_fn, _required)):
-            return False
-        _cfg = _adv(message.guild.id)
-        if not _cfg.get("xp_enabled", True):
-            return False
-        _record = _record_fn(message.guild.id, message.author.id)
-        _old = int(_record.get("level", 0))
-        _record["messages"] = int(_record.get("messages", 0)) + 1
-        _record["xp"] = int(_record.get("xp", 0)) + max(1, int(_cfg.get("xp_per_message", 5)))
-        while _record["xp"] >= _required(int(_record.get("level", 0))):
-            _record["xp"] -= _required(int(_record.get("level", 0)))
-            _record["level"] = int(_record.get("level", 0)) + 1
-        if int(_record.get("level", 0)) > _old:
-            try:
-                await message.channel.send(
-                    f"⭐ {message.author.mention} subiu para o nível **{_record['level']}**!",
-                    delete_after=8,
-                )
-            except Exception:
-                pass
-        _save = globals().get("save_data")
-        if callable(_save):
-            _save()
-        return True
-    except Exception as _exc:
-        _aura_patch_log(f"extra xp: {_exc!r}")
-        return False
-
-
-# ------------------------- ERROR HANDLING --------------------
-async def _aura_error_handler(interaction, error):
-    try:
-        _metrics = globals().get("_AURA_ENGINE_METRICS")
-        if isinstance(_metrics, dict):
-            _metrics["errors"] = int(_metrics.get("errors", 0)) + 1
-        _err = getattr(error, "original", error)
-        if isinstance(_err, app_commands.MissingPermissions):
-            _message = "❌ Você não possui as permissões necessárias."
-        elif isinstance(_err, app_commands.MissingRole):
-            _message = "❌ Seu cargo não permite usar este comando."
-        elif isinstance(_err, app_commands.CommandOnCooldown):
-            _message = f"⏳ Aguarde {getattr(_err, 'retry_after', 5):.1f}s e tente novamente."
-        elif isinstance(_err, app_commands.TransformerError):
-            _message = "❌ Um dos argumentos informados é inválido."
-        elif isinstance(_err, discord.Forbidden):
-            _message = "❌ O Discord recusou a ação. Verifique as permissões e a hierarquia."
-        else:
-            _message = "❌ O comando falhou, mas o erro foi registrado."
-        if interaction.response.is_done():
-            await interaction.followup.send(_message, ephemeral=True)
-        else:
-            await interaction.response.send_message(_message, ephemeral=True)
-    except Exception:
-        pass
-
-try:
-    bot.tree.on_error = _aura_error_handler
-except Exception:
-    pass
-
-
-# ------------------------- MODERATION HELPERS -----------------
-def _aura_can_target(interaction, member):
-    try:
-        _guild = interaction.guild
-        _actor = interaction.user
-        _me = _guild.me
-        if member.id == _actor.id:
-            return False, "Você não pode agir sobre si mesmo."
-        if member.id == _guild.owner_id:
-            return False, "O dono do servidor não pode ser alvo."
-        if _me and member.top_role >= _me.top_role:
-            return False, "O cargo do alvo está acima ou no mesmo nível do meu cargo."
-        if _actor.id != _guild.owner_id and isinstance(_actor, discord.Member) and member.top_role >= _actor.top_role:
-            return False, "O cargo do alvo está acima ou no mesmo nível do seu cargo."
-        _immune = globals().get("is_immune_user")
-        if callable(_immune) and _immune(member):
-            return False, "Este usuário está protegido pelo sistema."
-        return True, ""
-    except Exception as _exc:
-        return False, f"Falha ao validar hierarquia: {_exc}"
-
-
-def _aura_reason(value):
-    value = str(value or "").strip()
-    return value[:500] or "Sem motivo informado"
-
-
-# ------------------------- /mod --------------------------------
-try:
-    if not any(getattr(x, "name", None) == "mod" for x in bot.tree.get_commands()):
-        _aura_mod_group = app_commands.Group(name="mod", description="Central profissional de moderação.")
-
-        @_aura_mod_group.command(name="ban", description="Bane um membro com validação de hierarquia.")
-        @app_commands.checks.has_permissions(ban_members=True)
-        async def _aura_mod_ban(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
-            ok, msg = _aura_can_target(interaction, membro)
-            if not ok:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            try:
-                await membro.ban(reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
-                await interaction.response.send_message(f"🔨 {membro.mention} foi banido.", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.response.send_message("❌ Não foi possível banir: permissão/hierarquia insuficiente.", ephemeral=True)
-            except discord.HTTPException as exc:
-                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
-
-        @_aura_mod_group.command(name="kick", description="Expulsa um membro com validação de hierarquia.")
-        @app_commands.checks.has_permissions(kick_members=True)
-        async def _aura_mod_kick(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
-            ok, msg = _aura_can_target(interaction, membro)
-            if not ok:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            try:
-                await membro.kick(reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
-                await interaction.response.send_message(f"👢 {membro.mention} foi expulso.", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.response.send_message("❌ Não foi possível expulsar: permissão/hierarquia insuficiente.", ephemeral=True)
-            except discord.HTTPException as exc:
-                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
-
-        @_aura_mod_group.command(name="timeout", description="Aplica timeout temporário.")
-        @app_commands.checks.has_permissions(moderate_members=True)
-        async def _aura_mod_timeout(interaction, membro: discord.Member, minutos: app_commands.Range[int, 1, 40320], motivo: str = "Sem motivo informado"):
-            ok, msg = _aura_can_target(interaction, membro)
-            if not ok:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            try:
-                await membro.timeout(timedelta(minutes=int(minutos)), reason=f"{_aura_reason(motivo)} | Por {interaction.user}")
-                await interaction.response.send_message(f"⏱️ {membro.mention} recebeu timeout por **{minutos} min**.", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.response.send_message("❌ Não foi possível aplicar o timeout.", ephemeral=True)
-            except discord.HTTPException as exc:
-                await interaction.response.send_message(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
-
-        @_aura_mod_group.command(name="warn", description="Adverte e registra um membro.")
-        @app_commands.checks.has_permissions(moderate_members=True)
-        async def _aura_mod_warn(interaction, membro: discord.Member, motivo: str = "Sem motivo informado"):
-            ok, msg = _aura_can_target(interaction, membro)
-            if not ok:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            _add = globals().get("add_warning")
-            _save = globals().get("save_data")
-            if not callable(_add):
-                return await interaction.response.send_message("❌ Sistema de advertências indisponível.", ephemeral=True)
-            _total = _add(interaction.guild.id, membro.id, interaction.user.id, _aura_reason(motivo))
-            if callable(_save):
-                _save()
-            await interaction.response.send_message(f"⚠️ {membro.mention} recebeu uma advertência. Total: **{_total}**.", ephemeral=True)
-
-        @_aura_mod_group.command(name="clear", description="Apaga de 1 a 100 mensagens.")
-        @app_commands.checks.has_permissions(manage_messages=True)
-        async def _aura_mod_clear(interaction, quantidade: app_commands.Range[int, 1, 100]):
-            await interaction.response.defer(ephemeral=True)
-            try:
-                deleted = await interaction.channel.purge(limit=int(quantidade))
-            except discord.Forbidden:
-                return await interaction.followup.send("❌ Não tenho permissão para apagar mensagens.", ephemeral=True)
-            except discord.HTTPException as exc:
-                return await interaction.followup.send(f"❌ Falha do Discord: `{exc}`", ephemeral=True)
-            await interaction.followup.send(f"🧹 **{len(deleted)}** mensagens apagadas.", ephemeral=True)
-
-        @_aura_mod_group.command(name="lock", description="Tranca o canal atual.")
-        @app_commands.checks.has_permissions(manage_channels=True)
-        async def _aura_mod_lock(interaction, motivo: str = "Canal trancado pela moderação"):
-            try:
-                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False, reason=_aura_reason(motivo))
-            except discord.Forbidden:
-                return await interaction.response.send_message("❌ Não tenho permissão para trancar este canal.", ephemeral=True)
-            await interaction.response.send_message("🔒 Canal trancado.", ephemeral=True)
-
-        @_aura_mod_group.command(name="unlock", description="Destranca o canal atual.")
-        @app_commands.checks.has_permissions(manage_channels=True)
-        async def _aura_mod_unlock(interaction):
-            try:
-                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=None, reason=f"Destrancado por {interaction.user}")
-            except discord.Forbidden:
-                return await interaction.response.send_message("❌ Não tenho permissão para destrancar este canal.", ephemeral=True)
-            await interaction.response.send_message("🔓 Canal destrancado.", ephemeral=True)
-
-        bot.tree.add_command(_aura_mod_group)
-except Exception as _exc:
-    _aura_patch_log(f"/mod: {_exc!r}")
-
-
-# ------------------------- /comunidade -----------------------
-try:
-    if not any(getattr(x, "name", None) == "comunidade" for x in bot.tree.get_commands()):
-        _aura_com_group = app_commands.Group(name="comunidade", description="Ferramentas profissionais da comunidade.")
-
-        @_aura_com_group.command(name="anuncio", description="Publica um anúncio visual.")
-        @app_commands.checks.has_permissions(manage_guild=True)
-        async def _aura_com_anuncio(interaction, canal: discord.TextChannel, titulo: str, mensagem: str, cor: str = "D4AF37", imagem: str | None = None):
-            hx = str(cor).replace("#", "").strip()
-            if not re.fullmatch(r"[0-9A-Fa-f]{6}", hx):
-                return await interaction.response.send_message("❌ Cor inválida. Exemplo: `D4AF37`.", ephemeral=True)
-            embed = discord.Embed(title=titulo[:256], description=mensagem[:4096], color=int(hx, 16), timestamp=datetime.now(timezone.utc))
-            if interaction.guild.icon:
-                embed.set_author(name=f"Anúncio de {interaction.guild.name}", icon_url=interaction.guild.icon.url)
-            if imagem:
-                embed.set_image(url=imagem)
-            try:
-                await canal.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-            except discord.Forbidden:
-                return await interaction.response.send_message("❌ Não tenho permissão para publicar nesse canal.", ephemeral=True)
-            await interaction.response.send_message(f"✅ Anúncio enviado em {canal.mention}.", ephemeral=True)
-
-        @_aura_com_group.command(name="embed", description="Cria uma embed completa sem editar código.")
-        @app_commands.checks.has_permissions(manage_guild=True)
-        async def _aura_com_embed(interaction, titulo: str, descricao: str, canal: discord.TextChannel | None = None, cor: str = "D4AF37", imagem: str | None = None, thumbnail: str | None = None, rodape: str | None = None, autor: str | None = None):
-            hx = str(cor).replace("#", "").strip()
-            if not re.fullmatch(r"[0-9A-Fa-f]{6}", hx):
-                return await interaction.response.send_message("❌ Cor inválida. Exemplo: `5865F2`.", ephemeral=True)
-            canal = canal or interaction.channel
-            embed = discord.Embed(title=titulo[:256], description=descricao[:4096], color=int(hx, 16), timestamp=datetime.now(timezone.utc))
-            if imagem: embed.set_image(url=imagem)
-            if thumbnail: embed.set_thumbnail(url=thumbnail)
-            if autor: embed.set_author(name=autor[:256])
-            if rodape: embed.set_footer(text=rodape[:2048])
-            try:
-                await canal.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-            except discord.Forbidden:
-                return await interaction.response.send_message("❌ Não tenho permissão para publicar nesse canal.", ephemeral=True)
-            await interaction.response.send_message(f"✅ Embed publicada em {canal.mention}.", ephemeral=True)
-
-        @_aura_com_group.command(name="slowmode", description="Configura o modo lento do canal.")
-        @app_commands.checks.has_permissions(manage_channels=True)
-        async def _aura_com_slowmode(interaction, segundos: app_commands.Range[int, 0, 21600], canal: discord.TextChannel | None = None):
-            canal = canal or interaction.channel
-            try:
-                await canal.edit(slowmode_delay=int(segundos), reason=f"Slowmode por {interaction.user}")
-            except discord.Forbidden:
-                return await interaction.response.send_message("❌ Não tenho permissão para alterar o slowmode.", ephemeral=True)
-            await interaction.response.send_message(f"🐢 Slowmode de {canal.mention}: **{segundos}s**.", ephemeral=True)
-
-        @_aura_com_group.command(name="sugestao", description="Envia uma sugestão para o canal configurado.")
-        async def _aura_com_sugestao(interaction, texto: str):
-            _settings = globals().get("guild_settings")
-            if not callable(_settings):
-                return await interaction.response.send_message("❌ Configurações indisponíveis.", ephemeral=True)
-            _cid = _settings(interaction.guild.id).get("suggestion_channel_id")
-            _channel = interaction.guild.get_channel(int(_cid)) if _cid else None
-            if not isinstance(_channel, discord.TextChannel):
-                return await interaction.response.send_message("❌ Configure primeiro o canal de sugestões.", ephemeral=True)
-            embed = discord.Embed(title="💡 Nova sugestão", description=texto[:4000], color=discord.Color.gold(), timestamp=datetime.now(timezone.utc))
-            embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
-            try:
-                msg = await _channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-                await msg.add_reaction("✅")
-                await msg.add_reaction("❌")
-            except discord.HTTPException:
-                return await interaction.response.send_message("❌ Não foi possível publicar a sugestão.", ephemeral=True)
-            await interaction.response.send_message(f"✅ Sugestão enviada em {_channel.mention}.", ephemeral=True)
-
-        @_aura_com_group.command(name="enquete", description="Cria uma enquete com o sistema de votação existente.")
-        @app_commands.checks.has_permissions(manage_guild=True)
-        async def _aura_com_enquete(interaction, pergunta: str, opcao_a: str, opcao_b: str, opcao_c: str | None = None, opcao_d: str | None = None, opcao_e: str | None = None):
-            _options = [str(x)[:80] for x in (opcao_a, opcao_b, opcao_c, opcao_d, opcao_e) if x]
-            if len(_options) < 2:
-                return await interaction.response.send_message("❌ Informe pelo menos duas opções.", ephemeral=True)
-            if len({x.casefold() for x in _options}) != len(_options):
-                return await interaction.response.send_message("❌ As opções precisam ser diferentes.", ephemeral=True)
-            _polls = globals().get("data", {}).get("polls", {})
-            _view = globals().get("PollView")
-            _make_embed = globals().get("poll_embed")
-            _save = globals().get("save_data")
-            if not isinstance(_polls, dict) or not callable(_view):
-                return await interaction.response.send_message("❌ Sistema de enquetes indisponível.", ephemeral=True)
-            _poll_id = os.urandom(6).hex()
-            _poll = {"guild_id": interaction.guild.id, "channel_id": interaction.channel.id, "message_id": None, "creator_id": interaction.user.id, "question": str(pergunta)[:256], "options": _options, "votes": {}, "open": True}
-            _polls[_poll_id] = _poll
-            if callable(_save):
-                _save()
-            _embed = _make_embed(_poll) if callable(_make_embed) else discord.Embed(title="📊 Enquete", description=f"**{pergunta[:256]}**", color=discord.Color.gold())
-            await interaction.response.send_message(embed=_embed, view=_view(_poll_id))
-            try:
-                _msg = await interaction.original_response()
-                _poll["message_id"] = _msg.id
-                if callable(_save):
-                    _save()
-            except Exception:
-                pass
-
-        bot.tree.add_command(_aura_com_group)
-except Exception as _exc:
-    _aura_patch_log(f"/comunidade: {_exc!r}")
-
-
-# ------------------------- PROFESSIONAL COMMANDS ------------
-try:
-    def _aura_embed(title, description=""):
-        return discord.Embed(title=title, description=description, color=discord.Color(0xD4AF37), timestamp=datetime.now(timezone.utc))
-
-    # Replace risky/obsolete hard-coded root commands where present.
-    for _root_name in ("status", "comandos", "reiniciar"):
-        try:
-            bot.tree.remove_command(_root_name)
-        except Exception:
-            pass
-
-    @bot.tree.command(name="status", description="Mostra o estado operacional do bot.")
-    async def _aura_status(interaction):
-        _e = _aura_embed("🟡 Status operacional", "Visão geral da instância.")
-        _e.add_field(name="🏠 Servidores", value=str(len(bot.guilds)), inline=True)
-        _e.add_field(name="📡 Latência", value=f"{bot.latency * 1000:.0f} ms", inline=True)
-        _e.add_field(name="👥 Usuários", value=str(sum((g.member_count or 0) for g in bot.guilds)), inline=True)
-        _metrics = globals().get("_AURA_ENGINE_METRICS", {})
-        _e.add_field(name="⚡ Execuções", value=str(_metrics.get("commands", 0)), inline=True)
-        _e.add_field(name="🚨 Erros", value=str(_metrics.get("errors", 0)), inline=True)
-        await interaction.response.send_message(embed=_e, ephemeral=True)
-
-    @bot.tree.command(name="comandos", description="Lista os comandos e sistemas carregados.")
-    async def _aura_commands(interaction):
-        _items = []
-        for _cmd in sorted(bot.tree.get_commands(), key=lambda c: str(getattr(c, "name", "")).casefold()):
-            _subs = getattr(_cmd, "commands", []) or []
-            if _subs:
-                _items.append(f"`/{_cmd.name}` — {_cmd.description or 'grupo'} · **{len(_subs)}** subcomandos")
-            else:
-                _items.append(f"`/{_cmd.name}` — {_cmd.description or 'comando'}")
-        _e = _aura_embed("🧩 Catálogo de comandos", f"Entradas principais: **{len(bot.tree.get_commands())}**")
-        _e.add_field(name="Comandos", value="\n".join(_items)[:3900] or "Nenhum", inline=False)
-        await interaction.response.send_message(embed=_e, ephemeral=True)
-
-    @bot.tree.command(name="ajuda", description="Abre a central rápida de ajuda.")
-    async def _aura_help(interaction):
-        _e = _aura_embed(
-            "📚 Central de ajuda",
-            "Use os blocos abaixo para encontrar cada sistema do bot.\n\n"
-            "🎫 `/ticket ...`\n"
-            "💰 `/economia ...`\n"
-            "⏱️ `/ponto ...`\n"
-            "🛡️ `/seguranca ...`\n"
-            "🎮 `/diversao ...`\n"
-            "🛠️ `/mod ...`\n"
-            "🏆 `/comunidade ...`\n"
-            "⚙️ `/central painel`",
-        )
-        await interaction.response.send_message(embed=_e, ephemeral=True)
-
-    @bot.tree.command(name="reiniciar", description="Reinicia a instância do bot.")
-    async def _aura_restart(interaction):
-        _owner = getattr(getattr(bot, "application", None), "owner", None)
-        _allowed = bool(_owner and _owner.id == interaction.user.id)
-        if interaction.guild and not _allowed:
-            _allowed = interaction.user.id == interaction.guild.owner_id
-        if not _allowed:
-            return await interaction.response.send_message("❌ Você não está autorizado a reiniciar o bot.", ephemeral=True)
-        await interaction.response.send_message("♻️ Reiniciando...", ephemeral=True)
-        await asyncio.sleep(1)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-
-except Exception as _exc:
-    _aura_patch_log(f"root commands: {_exc!r}")
-
-
-# ------------------------- CENTRAL EXTRAS --------------------
-try:
-    _central = globals().get("_aura_central_group")
-    if _central is not None and not any(getattr(x, "name", None) == "sistemas" for x in getattr(_central, "commands", [])):
-        @_central.command(name="sistemas", description="Mostra o estado dos principais módulos.")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def _aura_central_sistemas(interaction):
-            _e = _aura_embed("🧩 Sistemas carregados", "Estado rápido dos módulos principais.")
-            _checks = [
-                ("🎫 Tickets", "t3_load"),
-                ("💰 Economia", "wallet"),
-                ("🎉 Sorteios", "finish_giveaway"),
-                ("🛡️ Segurança", "security_config"),
-                ("⏱️ Ponto", "guild_clock"),
-                ("✅ Verificação", "verification_config"),
-                ("⭐ XP", "level_record"),
-                ("🤖 AutoMod", "process_automod"),
-            ]
-            for _label, _name in _checks:
-                _e.add_field(name=_label, value="🟢 Carregado" if callable(globals().get(_name)) else "🔴 Indisponível", inline=True)
-            await interaction.response.send_message(embed=_e, ephemeral=True)
-
-        @_central.command(name="reparar", description="Executa reparos não destrutivos.")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def _aura_central_reparar(interaction):
-            await interaction.response.defer(ephemeral=True)
-            _messages = []
-            try:
-                await _aura_restore_views_safe(); _messages.append("Views persistentes verificadas")
-            except Exception as _exc:
-                _messages.append(f"Views: {_exc}")
-            try:
-                _save = globals().get("save_data")
-                if callable(_save): _save()
-                _messages.append("Banco principal validado")
-            except Exception as _exc:
-                _messages.append(f"Banco: {_exc}")
-            await interaction.followup.send("🛠️ **Reparo concluído**\n" + "\n".join(f"• {x}" for x in _messages), ephemeral=True)
-except Exception as _exc:
-    _aura_patch_log(f"central extras: {_exc!r}")
-
-
-# ------------------------- SYNC ONCE --------------------------
-try:
-    _old_setup = globals().get("_aura_professional_setup_hook")
-    if callable(_old_setup) and not getattr(_old_setup, "_aura_once", False):
-        async def _aura_setup_once():
-            await _old_setup()
-            globals()["commands_synced"] = True
-            await _aura_restore_views_safe()
-        _aura_setup_once._aura_once = True
-        bot.setup_hook = _aura_setup_once
-except Exception:
-    pass
-
-
-# ------------------------- FINAL LAUNCHER ---------------------
-if __name__ == "__main__":
-    _token = os.getenv("DISCORD_TOKEN")
-    if not _token:
-        raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
-# AURA: bot.run movido para o final pelo atualizador
-
-
-
-# ============================================================
-# 🚀 AURA — EXECUÇÃO FINAL
-# ============================================================
-
-if __name__ == "__main__":
-    # O host fornece DISCORD_TOKEN e qualquer outra variável já existente.
-    # O atualizador não solicita nem armazena credenciais.
-    _aura_host_token = os.getenv("DISCORD_TOKEN")
-    if not _aura_host_token:
-        # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
-        raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
-# AURA: bot.run movido para o final pelo atualizador
-
-# >>> AURA PROFESSIONAL ENGINE BEGIN >>>
-# Não editar este bloco manualmente. O atualizador o recria.
-
-import asyncio as _aura_asyncio
-import json as _aura_json
-import logging as _aura_logging
-import os as _aura_os
-import time as _aura_time
-import traceback as _aura_traceback
-from datetime import datetime as _aura_datetime, timezone as _aura_timezone
-from pathlib import Path as _aura_Path
-
-_AURA_ENGINE_VERSION = "2.0-professional"
-_AURA_ENGINE_STARTED = _aura_time.monotonic()
-_AURA_ENGINE_DATA = _aura_Path("aura_professional_state.json")
-_AURA_ENGINE_BACKUP_DIR = _aura_Path("aura_data_backups")
-_AURA_ENGINE_METRICS = {"commands": 0, "errors": 0, "tickets_recovered": 0, "views_registered": 0}
-_AURA_ENGINE_LOG = _aura_Path("aura_professional.log")
-
-# ============================================================
-# LOGGING CENTRALIZADO
-# ============================================================
-
-_aura_logger = _aura_logging.getLogger("aura.professional")
-if not _aura_logger.handlers:
-    _aura_logger.setLevel(_aura_logging.INFO)
-    try:
-        _aura_handler = _aura_logging.FileHandler(_AURA_ENGINE_LOG, encoding="utf-8")
-        _aura_handler.setFormatter(_aura_logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
-        _aura_logger.addHandler(_aura_handler)
-    except Exception:
-        pass
-
-
-def _aura_save_metrics():
-    payload = {
-        "version": _AURA_ENGINE_VERSION,
-        "updated_at": _aura_datetime.now(_aura_timezone.utc).isoformat(),
-        "metrics": dict(_AURA_ENGINE_METRICS),
-        "guilds": len(getattr(bot, "guilds", [])),
-        "latency_ms": round(float(getattr(bot, "latency", 0.0)) * 1000, 2),
-        "uptime_seconds": int(_aura_time.monotonic() - _AURA_ENGINE_STARTED),
-    }
-    try:
-        temp = _AURA_ENGINE_DATA.with_suffix(".tmp")
-        temp.write_text(_aura_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(_AURA_ENGINE_DATA)
-    except Exception:
-        pass
-
-
-# ============================================================
-# RESPOSTAS PROFISSIONAIS DE ERRO
-# ============================================================
-
-async def _aura_app_command_error(interaction, error):
-    _AURA_ENGINE_METRICS["errors"] += 1
-    _aura_logger.error(
-        "App command error: %s\n%s",
-        error,
-        "".join(_aura_traceback.format_exception(type(error), error, error.__traceback__)),
-    )
-
-    message = "❌ O comando encontrou um erro interno. O erro foi registrado e o sistema continua protegido."
-    try:
-        if not interaction.response.is_done():
-            await interaction.response.send_message(message, ephemeral=True)
-        else:
-            await interaction.followup.send(message, ephemeral=True)
-    except Exception:
-        pass
-
-
-try:
-    bot.tree.on_error = _aura_app_command_error
-except Exception:
-    pass
-
-
-async def _aura_command_error(ctx, error):
-    _AURA_ENGINE_METRICS["errors"] += 1
-    _aura_logger.error(
-        "Prefix error: %s\n%s",
-        error,
-        "".join(_aura_traceback.format_exception(type(error), error, error.__traceback__)),
-    )
-
-    try:
-        if isinstance(error, commands.CommandNotFound):
-            return
-        await ctx.send("❌ Não foi possível concluir esse comando. O erro foi registrado.", delete_after=10)
-    except Exception:
-        pass
-
-
-try:
-    bot.add_listener(_aura_command_error, "on_command_error")
-except Exception:
-    pass
-
-
-# ============================================================
-# MÉTRICAS / AUDITORIA
-# ============================================================
-
-async def _aura_app_command_completion(interaction, command):
-    _AURA_ENGINE_METRICS["commands"] += 1
-    try:
-        name = getattr(command, "qualified_name", getattr(command, "name", "unknown"))
-        guild = getattr(interaction.guild, "id", None)
-        _aura_logger.info("COMMAND | guild=%s | user=%s | command=/%s", guild, interaction.user.id, name)
-    except Exception:
-        pass
-
-try:
-    bot.add_listener(_aura_app_command_completion, "on_app_command_completion")
-except Exception:
-    pass
-
-
-# ============================================================
-# RECUPERAÇÃO DAS VIEWS PERSISTENTES
-# ============================================================
-
-async def _aura_restore_persistent_views():
-    # Ticket V3: painéis + controles dos tickets abertos.
-    try:
-        _load = globals().get("t3_load")
-        _panel_view_cls = globals().get("T3PanelView")
-        _ticket_view_cls = globals().get("T3TicketView")
-        if callable(_load):
-            _data = _load()
-
-            if callable(_panel_view_cls):
-                for _panel in _data.get("panels", {}).values():
-                    _message_id = _panel.get("panel_message_id")
-                    if not _message_id:
-                        continue
-                    try:
-                        bot.add_view(_panel_view_cls(_panel), message_id=int(_message_id))
-                        _AURA_ENGINE_METRICS["views_registered"] += 1
-                    except Exception as _exc:
-                        _aura_logger.debug("Painel não restaurado: %r", _exc)
-
-            if callable(_ticket_view_cls):
-                for _ticket_id, _ticket in _data.get("tickets", {}).items():
-                    if _ticket.get("closed"):
-                        continue
-                    _message_id = _ticket.get("message_id")
-                    if not _message_id:
-                        continue
-                    try:
-                        bot.add_view(_ticket_view_cls(str(_ticket_id)), message_id=int(_message_id))
-                        _AURA_ENGINE_METRICS["views_registered"] += 1
-                    except Exception as _exc:
-                        _aura_logger.debug("Ticket view não restaurado: %r", _exc)
-    except Exception:
-        _aura_logger.exception("Falha na recuperação das views do Ticket V3")
-
-    # Views persistentes sem argumentos que já existem no código do bot.
-    for _name in (
-        "VerificationView",
-        "ClockView",
-    ):
-        _cls = globals().get(_name)
-        if not callable(_cls):
-            continue
-        try:
-            bot.add_view(_cls())
-            _AURA_ENGINE_METRICS["views_registered"] += 1
-        except Exception:
-            pass
-
-
-# ============================================================
-# MELHORIA DO TICKET: SALVA O message_id DO CONTROLE
-# ============================================================
-
-_original_t3_create_ticket = globals().get("t3_create_ticket")
-if callable(_original_t3_create_ticket) and not getattr(_original_t3_create_ticket, "_aura_professional_wrapped", False):
-    async def _aura_t3_create_ticket(interaction, panel, ticket_type, answers=None):
-        _channel, _ticket = await _original_t3_create_ticket(interaction, panel, ticket_type, answers)
-        try:
-            _found_message_id = None
-            async for _msg in _channel.history(limit=8):
-                if getattr(_msg.author, "id", None) == getattr(bot.user, "id", None) and _msg.components:
-                    _found_message_id = _msg.id
-                    break
-            if _found_message_id:
-                _data = globals().get("t3_load", lambda: {})()
-                _saved_ticket = _data.get("tickets", {}).get(str(_ticket.get("id")))
-                if _saved_ticket is not None:
-                    _saved_ticket["message_id"] = _found_message_id
-                    _saved_ticket["channel_id"] = getattr(_channel, "id", _saved_ticket.get("channel_id"))
-                    globals()["t3_save"](_data)
-        except Exception:
-            _aura_logger.exception("Não foi possível registrar message_id do Ticket V3")
-        return _channel, _ticket
-
-    _aura_t3_create_ticket._aura_professional_wrapped = True
-    globals()["t3_create_ticket"] = _aura_t3_create_ticket
-
-
-# ============================================================
-# DATA LAYER: BACKUP E DETECÇÃO DE JSON CORROMPIDO
-# ============================================================
-
-_AURA_DATA_FILES = (
-    "data.json",
-    "ticket_panels.json",
-    "tickets_v3.json",
-    "aura_professional_state.json",
-)
-
-
-def _aura_backup_data_files():
-    _AURA_ENGINE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    _stamp = _aura_datetime.now().strftime("%Y%m%d_%H%M%S")
-    for _name in _AURA_DATA_FILES:
-        _path = _aura_Path(_name)
-        if not _path.exists():
-            continue
-        try:
-            _dest = _AURA_ENGINE_BACKUP_DIR / f"{_path.stem}_{_stamp}{_path.suffix}"
-            shutil.copy2(_path, _dest)
-        except Exception:
-            pass
-
-    try:
-        _files = sorted(_AURA_ENGINE_BACKUP_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for _old in _files[60:]:
-            try:
-                _old.unlink()
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-
-def _aura_check_json_files():
-    for _name in _AURA_DATA_FILES:
-        _path = _aura_Path(_name)
-        if not _path.exists():
-            continue
-        try:
-            _aura_json.loads(_path.read_text(encoding="utf-8"))
-        except Exception as _exc:
-            _aura_logger.error("JSON potencialmente corrompido: %s | %s", _name, _exc)
-
-
-# ============================================================
-# CENTRAL PROFISSIONAL / PAINEL DE ADMINISTRAÇÃO
-# ============================================================
-
-try:
-    _aura_central_group = app_commands.Group(
-        name="central",
-        description="Central profissional de administração do bot.",
-    )
-except Exception:
-    _aura_central_group = None
-
-
-def _aura_count_commands(command_list):
-    total = 0
-    for _cmd in command_list:
-        total += 1
-        total += len(getattr(_cmd, "commands", []) or [])
-    return total
-
-
-def _aura_color():
-    try:
-        return discord.Color(0xD4AF37)
-    except Exception:
-        return discord.Color.blurple()
-
-
-def _aura_embed(title, description=""):
-    _embed = discord.Embed(title=title, description=description, color=_aura_color(), timestamp=_aura_datetime.now(_aura_timezone.utc))
-    _embed.set_footer(text=f"AURA Professional Engine • v{_AURA_ENGINE_VERSION}")
-    return _embed
-
-
-class _AuraCentralView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-
-    @discord.ui.button(label="Status", emoji="📊", style=discord.ButtonStyle.primary)
-    async def status(self, interaction, button):
-        embed = _aura_status_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Diagnóstico", emoji="🧪", style=discord.ButtonStyle.secondary)
-    async def diagnostic(self, interaction, button):
-        embed = _aura_diagnostic_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Tickets", emoji="🎫", style=discord.ButtonStyle.success)
-    async def tickets(self, interaction, button):
-        embed = _aura_ticket_stats_embed(interaction.guild)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Recarregar", emoji="♻️", style=discord.ButtonStyle.secondary)
-    async def reload_views(self, interaction, button):
-        await _aura_restore_persistent_views()
-        await interaction.response.send_message("✅ Views persistentes recarregadas.", ephemeral=True)
-
-
-def _aura_status_embed():
-    _guilds = len(getattr(bot, "guilds", []))
-    _latency = float(getattr(bot, "latency", 0.0)) * 1000
-    _uptime = int(_aura_time.monotonic() - _AURA_ENGINE_STARTED)
-    _embed = _aura_embed("🟡 Central do Bot", "Visão geral da operação.")
-    _embed.add_field(name="🤖 Instância", value=f"`{getattr(bot.user, 'id', 'N/A')}`", inline=True)
-    _embed.add_field(name="🏠 Servidores", value=str(_guilds), inline=True)
-    _embed.add_field(name="📡 Latência", value=f"{_latency:.0f} ms", inline=True)
-    _embed.add_field(name="⏱️ Uptime", value=f"{_uptime}s", inline=True)
-    _embed.add_field(name="⚡ Comandos executados", value=str(_AURA_ENGINE_METRICS["commands"]), inline=True)
-    _embed.add_field(name="🚨 Erros registrados", value=str(_AURA_ENGINE_METRICS["errors"]), inline=True)
-    return _embed
-
-
-def _aura_diagnostic_embed():
-    _embed = _aura_embed("🧪 Diagnóstico profissional", "Verificação rápida dos principais componentes.")
-    _checks = []
-
-    try:
-        import ssl as _ssl
-        _checks.append(("🔐 SSL nativo", "OK" if _ssl.OPENSSL_VERSION else "ALERTA"))
-    except Exception as _exc:
-        _checks.append(("🔐 SSL nativo", f"ERRO: {_exc}"))
-
-    _checks.append(("📦 discord.py", "OK" if globals().get("discord") else "ERRO"))
-    _checks.append(("🌐 aiohttp", "OK" if globals().get("aiohttp") else "ERRO"))
-    _checks.append(("🧩 Slash tree", f"{_aura_count_commands(bot.tree.get_commands())} entradas"))
-    _checks.append(("🎫 Ticket V3", "OK" if callable(globals().get("t3_load")) else "Não detectado"))
-
-    for _name, _value in _checks:
-        _embed.add_field(name=_name, value=_value[:1024], inline=False)
-    return _embed
-
-
-def _aura_ticket_stats_embed(guild):
-    _embed = _aura_embed("🎫 Tickets", "Estado atual do atendimento.")
-    try:
-        _load = globals().get("t3_load")
-        _data = _load() if callable(_load) else {}
-        _tickets = [x for x in _data.get("tickets", {}).values() if str(x.get("guild_id")) == str(guild.id)]
-        _open = [x for x in _tickets if not x.get("closed")]
-        _closed = [x for x in _tickets if x.get("closed")]
-        _panels = [x for x in _data.get("panels", {}).values() if str(x.get("guild_id")) == str(guild.id)]
-        _embed.add_field(name="🟢 Abertos", value=str(len(_open)), inline=True)
-        _embed.add_field(name="🔒 Fechados", value=str(len(_closed)), inline=True)
-        _embed.add_field(name="🧱 Painéis", value=str(len(_panels)), inline=True)
-        return _embed
-    except Exception as _exc:
-        _embed.description = f"Não foi possível ler o banco: `{_exc}`"
-        return _embed
-
-
-if _aura_central_group is not None:
-
-    @_aura_central_group.command(name="painel", description="Abre a central profissional do bot.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_painel(interaction):
-        await interaction.response.send_message(embed=_aura_status_embed(), view=_AuraCentralView(), ephemeral=True)
-
-    @_aura_central_group.command(name="status", description="Mostra o status operacional do bot.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_status(interaction):
-        await interaction.response.send_message(embed=_aura_status_embed(), ephemeral=True)
-
-    @_aura_central_group.command(name="diagnostico", description="Executa diagnóstico do bot.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_diagnostic(interaction):
-        await interaction.response.send_message(embed=_aura_diagnostic_embed(), ephemeral=True)
-
-    @_aura_central_group.command(name="tickets", description="Mostra as métricas de tickets do servidor.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_tickets(interaction):
-        await interaction.response.send_message(embed=_aura_ticket_stats_embed(interaction.guild), ephemeral=True)
-
-    @_aura_central_group.command(name="comandos", description="Lista os blocos e a quantidade de comandos carregados.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_comandos(interaction):
-        _commands = bot.tree.get_commands()
-        _lines = []
-        for _cmd in _commands:
-            _sub = getattr(_cmd, "commands", []) or []
-            if _sub:
-                _lines.append(f"`/{_cmd.name}` → **{len(_sub)}** subcomandos")
-            else:
-                _lines.append(f"`/{_cmd.name}`")
-        _embed = _aura_embed("🧩 Comandos carregados", f"Total de entradas principais: **{len(_commands)}**")
-        _embed.add_field(name="Catálogo", value="\n".join(_lines)[:4000] or "Nenhum", inline=False)
-        await interaction.response.send_message(embed=_embed, ephemeral=True)
-
-    @_aura_central_group.command(name="backup", description="Cria backup imediato dos dados do bot.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_backup(interaction):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await _aura_asyncio.to_thread(_aura_backup_data_files)
-            await interaction.followup.send("✅ Backup dos dados concluído.", ephemeral=True)
-        except Exception as _exc:
-            await interaction.followup.send(f"❌ Falha no backup: `{_exc}`", ephemeral=True)
-
-    @_aura_central_group.command(name="recarregar", description="Recarrega views persistentes do sistema.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def _aura_central_reload(interaction):
-        await interaction.response.defer(ephemeral=True)
-        await _aura_restore_persistent_views()
-        await interaction.followup.send("✅ Views persistentes recarregadas.", ephemeral=True)
-
-    try:
-        if not any(getattr(_c, "name", None) == "central" for _c in bot.tree.get_commands()):
-            bot.tree.add_command(_aura_central_group)
-    except Exception as _exc:
-        _aura_logger.error("Falha ao registrar /central: %r", _exc)
-
-
-# ============================================================
-# WATCHDOG / STATUS / BACKUPS
-# ============================================================
-
-try:
-    _aura_background_task = None
-
-    @tasks.loop(minutes=5)
-    async def _aura_professional_loop():
-        try:
-            _aura_check_json_files()
-            _aura_save_metrics()
-            await _aura_restore_persistent_views()
-        except Exception:
-            _aura_logger.exception("Falha no loop profissional")
-
-    @_aura_professional_loop.before_loop
-    async def _aura_professional_before_loop():
-        await bot.wait_until_ready()
-
-except Exception:
-    _aura_professional_loop = None
-
-
-try:
-    @tasks.loop(minutes=30)
-    async def _aura_backup_loop():
-        try:
-            await _aura_asyncio.to_thread(_aura_backup_data_files)
-        except Exception:
-            _aura_logger.exception("Falha no backup automático")
-
-    @_aura_backup_loop.before_loop
-    async def _aura_backup_before_loop():
-        await bot.wait_until_ready()
-except Exception:
-    _aura_backup_loop = None
-
-
-try:
-    @tasks.loop(minutes=3)
-    async def _aura_presence_loop():
-        try:
-            _count = len(getattr(bot, "guilds", []))
-            await bot.change_presence(
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=f"{_count} servidores • /central",
-                )
-            )
-        except Exception:
-            pass
-
-    @_aura_presence_loop.before_loop
-    async def _aura_presence_before_loop():
-        await bot.wait_until_ready()
-except Exception:
-    _aura_presence_loop = None
-
-
-# ============================================================
-# SETUP HOOK PROFISSIONAL
-# ============================================================
-
-_AURA_ORIGINAL_SETUP_HOOK = globals().get("setup_hook")
-
-async def _aura_professional_setup_hook():
-    if callable(_AURA_ORIGINAL_SETUP_HOOK):
-        try:
-            await _AURA_ORIGINAL_SETUP_HOOK()
-        except Exception:
-            _aura_logger.exception("setup_hook original falhou")
-
-    try:
-        await _aura_restore_persistent_views()
-    except Exception:
-        _aura_logger.exception("Falha nas views persistentes")
-
-    # Importante: o /central e todos os comandos do arquivo já foram definidos aqui.
-    try:
-        _synced = await bot.tree.sync()
-        _aura_logger.info("Slash commands sincronizados: %s", len(_synced))
-    except Exception:
-        _aura_logger.exception("Falha ao sincronizar slash commands")
-
-    for _loop in (_aura_professional_loop, _aura_backup_loop, _aura_presence_loop):
-        if _loop is not None:
-            try:
-                if not _loop.is_running():
-                    _loop.start()
-            except Exception:
-                _aura_logger.exception("Não foi possível iniciar task profissional")
-
-    _aura_save_metrics()
-
-
-try:
-    bot.setup_hook = _aura_professional_setup_hook
-except Exception:
-    pass
-
-
-# ============================================================
-# READY / GUILD JOIN / GUILD REMOVE
-# ============================================================
-
-async def _aura_ready_listener():
-    try:
-        _aura_logger.info(
-            "READY | bot=%s | guilds=%s | latency=%.0fms | engine=%s",
-            bot.user,
-            len(getattr(bot, "guilds", [])),
-            float(getattr(bot, "latency", 0.0)) * 1000,
-            _AURA_ENGINE_VERSION,
-        )
-    except Exception:
-        pass
-
-
-async def _aura_guild_join_listener(guild):
-    _aura_logger.info("GUILD JOIN | %s (%s)", guild.name, guild.id)
-    try:
-        _save = globals().get("save_data")
-        if callable(_save):
-            _save()
-    except Exception:
-        pass
-
-
-async def _aura_guild_remove_listener(guild):
-    _aura_logger.warning("GUILD REMOVE | %s (%s)", guild.name, guild.id)
-
-
-try:
-    bot.add_listener(_aura_ready_listener, "on_ready")
-    bot.add_listener(_aura_guild_join_listener, "on_guild_join")
-    bot.add_listener(_aura_guild_remove_listener, "on_guild_remove")
-except Exception:
-    pass
-
-
-# ============================================================
-# PRIMEIRA CARGA DA CAMADA
-# ============================================================
-
-try:
-    _AURA_ENGINE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    _aura_check_json_files()
-except Exception:
-    pass
-
-# <<< AURA PROFESSIONAL ENGINE END <<<
-
-# ============================================================
-# 🚀 AURA — EXECUÇÃO FINAL
-# ============================================================
-
-if __name__ == "__main__":
-    # O host fornece DISCORD_TOKEN e qualquer outra variável já existente.
-    # O atualizador não solicita nem armazena credenciais.
-    _aura_host_token = os.getenv("DISCORD_TOKEN")
-    if not _aura_host_token:
-        # Mantém a mensagem clara caso o próprio host não tenha fornecido o token.
-        raise RuntimeError("O host não forneceu DISCORD_TOKEN ao processo.")
-    bot.run(_aura_host_token)
-
-
-
-# ============================================================
-# AURA EVOLUTION INFRASTRUCTURE
-# ============================================================
-
-from pathlib import Path as _AuraPath
-from datetime import datetime as _AuraDateTime
-
-_AURA_DATA_DIR = _AuraPath(__file__).resolve().parent / "aura_data"
-_AURA_DATA_DIR.mkdir(exist_ok=True)
-
-_AURA_CONFIG_FILE = _AURA_DATA_DIR / "aura_config.json"
-_AURA_STATS_FILE = _AURA_DATA_DIR / "aura_runtime_stats.json"
-
-
-def _aura_load_json(path, default=None):
-    try:
-        if not path.exists():
-            return default if default is not None else {}
-
-        with path.open("r", encoding="utf-8") as _f:
-            return json.load(_f)
-
-    except Exception:
-        return default if default is not None else {}
-
-
-def _aura_save_json(path, data):
-    try:
-        with path.open("w", encoding="utf-8") as _f:
-            json.dump(
-                data,
-                _f,
-                indent=4,
-                ensure_ascii=False
-            )
-        return True
-
-    except Exception:
-        return False
-
-
-_AURA_RUNTIME_STATS = _aura_load_json(
-    _AURA_STATS_FILE,
-    {
-        "commands_used": 0,
-        "commands": {},
-        "started_at": None
-    }
-)
-
-
-def _aura_register_command_usage(name):
-    try:
-        _AURA_RUNTIME_STATS["commands_used"] = (
-            int(_AURA_RUNTIME_STATS.get("commands_used", 0)) + 1
-        )
-
-        commands = _AURA_RUNTIME_STATS.setdefault(
-            "commands",
-            {}
-        )
-
-        commands[name] = int(commands.get(name, 0)) + 1
-
-        _aura_save_json(
-            _AURA_STATS_FILE,
-            _AURA_RUNTIME_STATS
-        )
-
-    except Exception:
-        pass
-
-
-def _aura_get_color(name="primary_color"):
-    try:
-        data = _aura_load_json(
-            _AURA_CONFIG_FILE,
-            {}
-        )
-
-        appearance = data.get(
-            "appearance",
-            {}
-        )
-
-        return int(
-            appearance.get(
-                name,
-                0x5865F2
-            )
-        )
-
-    except Exception:
-        return 0x5865F2
-
-
-def _aura_embed(
-    title,
-    description="",
-    color=None
-):
-    return discord.Embed(
-        title=title,
-        description=description,
-        color=(
-            color
-            if color is not None
-            else _aura_get_color()
-        ),
-        timestamp=_AuraDateTime.now()
-    )
-
-
-def _aura_footer(embed):
-    try:
-        data = _aura_load_json(
-            _AURA_CONFIG_FILE,
-            {}
-        )
-
-        footer = data.get(
-            "appearance",
-            {}
-        ).get(
-            "footer",
-            "AURA • Sistema de gerenciamento"
-        )
-
-        embed.set_footer(
-            text=footer
-        )
-
-    except Exception:
-        pass
-
-    return embed
-
-
-def _aura_is_admin(interaction):
-    try:
-        return bool(
-            interaction.user.guild_permissions.administrator
-            or interaction.user.guild_permissions.manage_guild
-        )
-    except Exception:
-        return False
-
-
-def _aura_has_guild(interaction):
-    return interaction.guild is not None
-
-
-def _aura_safe_name(value):
-    value = str(value)
-    value = value.replace("@", "")
-    return value[:100]
-
-
-def _aura_count_commands():
-    try:
-        total = 0
-
-        if "bot" in globals():
-
-            tree_obj = getattr(
-                bot,
-                "tree",
-                None
-            )
-
-            if tree_obj is not None:
-                total += len(
-                    getattr(
-                        tree_obj,
-                        "get_commands",
-                        lambda: []
-                    )()
-                )
-
-        return total
-
-    except Exception:
-        return 0
-
-
-
-# ============================================================
-# AURA EVOLUTION PANEL
-# ============================================================
-
-try:
-    from discord import ui as _aura_ui
-except Exception:
-    _aura_ui = None
-
-
-class AuraPanelView(discord.ui.View):
-
-    def __init__(self):
-        super().__init__(timeout=300)
-
-    async def interaction_check(self, interaction):
-        if not _aura_is_admin(interaction):
-
-            await interaction.response.send_message(
-                "❌ Você não possui permissão para gerenciar este servidor.",
-                ephemeral=True
-            )
-
-            return False
-
-        return True
-
-    @discord.ui.button(
-        label="Visão Geral",
-        emoji="◈",
-        style=discord.ButtonStyle.primary,
-        row=0
-    )
-    async def overview(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "◈ Central Geral",
-            (
-                f"**Servidor:** {interaction.guild.name}\n"
-                f"**Membros:** {interaction.guild.member_count}\n"
-                f"**Canais:** {len(interaction.guild.channels)}\n"
-                f"**Cargos:** {len(interaction.guild.roles)}\n\n"
-                f"**Comandos registrados:** {_aura_count_commands()}"
-            )
-        )
-
-        _aura_footer(embed)
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Tickets",
-        emoji="🎫",
-        style=discord.ButtonStyle.secondary,
-        row=0
-    )
-    async def tickets(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "🎫 Central de Tickets",
-            (
-                "Gerencie o sistema de atendimento.\n\n"
-                "• Painéis\n"
-                "• Categorias\n"
-                "• Canais\n"
-                "• Permissões\n"
-                "• Configurações"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Comunidade",
-        emoji="🌐",
-        style=discord.ButtonStyle.secondary,
-        row=0
-    )
-    async def community(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "🌐 Central de Comunidade",
-            (
-                "Ferramentas de comunidade.\n\n"
-                "• Anúncios\n"
-                "• Embeds\n"
-                "• Boas-vindas\n"
-                "• Convites\n"
-                "• Sugestões"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Segurança",
-        emoji="🛡️",
-        style=discord.ButtonStyle.secondary,
-        row=0
-    )
-    async def security(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "🛡️ Central de Segurança",
-            (
-                "Controle de proteção do servidor.\n\n"
-                "• AutoMod\n"
-                "• Anti-Link\n"
-                "• Anti-Spam\n"
-                "• Proteções\n"
-                "• Logs"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Economia",
-        emoji="💰",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def economy(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "💰 Central de Economia",
-            (
-                "Gerencie os recursos econômicos.\n\n"
-                "• Saldo\n"
-                "• Recompensas\n"
-                "• Loja\n"
-                "• Configurações"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Logs",
-        emoji="📜",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def logs(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "📜 Central de Logs",
-            (
-                "Configure o sistema de registros.\n\n"
-                "• Moderação\n"
-                "• Entradas e saídas\n"
-                "• Tickets\n"
-                "• Segurança\n"
-                "• Sistema"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Automação",
-        emoji="⚡",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def automation(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = _aura_embed(
-            "⚡ Central de Automação",
-            (
-                "Automatize eventos do servidor.\n\n"
-                "• Boas-vindas\n"
-                "• Saídas\n"
-                "• Mensagens\n"
-                "• Rotinas\n"
-                "• Tarefas automáticas"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Aparência",
-        emoji="🎨",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def appearance(
-        self,
-        interaction,
-        button
-    ):
-
-        data = _aura_load_json(
-            _AURA_CONFIG_FILE,
-            {}
-        )
-
-        appearance = data.get(
-            "appearance",
-            {}
-        )
-
-        embed = _aura_embed(
-            "🎨 Central de Aparência",
-            (
-                f"**Cor principal:** "
-                f"`{appearance.get('primary_color', 0x5865F2):06X}`\n"
-                f"**Cor de sucesso:** "
-                f"`{appearance.get('success_color', 0x57F287):06X}`\n"
-                f"**Cor de erro:** "
-                f"`{appearance.get('danger_color', 0xED4245):06X}`\n\n"
-                f"**Rodapé:** "
-                f"{appearance.get('footer', 'AURA')}"
-            )
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Diagnóstico",
-        emoji="🧪",
-        style=discord.ButtonStyle.success,
-        row=2
-    )
-    async def diagnostics(
-        self,
-        interaction,
-        button
-    ):
-
-        guild = interaction.guild
-
-        embed = _aura_embed(
-            "🧪 Diagnóstico do Sistema",
-            (
-                f"**Bot:** `{bot.user}`\n"
-                f"**ID:** `{bot.user.id}`\n"
-                f"**Latência:** `{round(bot.latency * 1000)}ms`\n"
-                f"**Guild atual:** `{guild.name}`\n"
-                f"**Comandos:** `{_aura_count_commands()}`\n"
-                f"**Canais:** `{len(guild.channels)}`\n"
-                f"**Cargos:** `{len(guild.roles)}`"
-            ),
-            _aura_get_color("success_color")
-        )
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraPanelView()
-        )
-
-    @discord.ui.button(
-        label="Fechar",
-        emoji="✖️",
-        style=discord.ButtonStyle.danger,
-        row=2
-    )
-    async def close(
-        self,
-        interaction,
-        button
-    ):
-
-        await interaction.response.edit_message(
-            content="Painel fechado.",
-            embed=None,
-            view=None
-        )
-
-
-async def _aura_open_panel(interaction):
-
-    embed = _aura_embed(
-        "◈ AURA • Central de Controle",
-        (
-            "## Sistema de gerenciamento\n\n"
-            "Utilize os controles abaixo para acessar "
-            "cada central do servidor.\n\n"
-            "🎫 **Tickets**\n"
-            "🌐 **Comunidade**\n"
-            "🛡️ **Segurança**\n"
-            "💰 **Economia**\n"
-            "📜 **Logs**\n"
-            "⚡ **Automação**\n"
-            "🎨 **Aparência**\n"
-            "🧪 **Diagnóstico**"
-        )
-    )
-
-    embed.set_thumbnail(
-        url=interaction.guild.icon.url
-        if interaction.guild.icon
-        else discord.Embed.Empty
-    )
-
-    _aura_footer(embed)
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=AuraPanelView(),
-        ephemeral=True
-    )
-
-
-
-# ============================================================
-# AURA GLOBAL ERROR HANDLER
-# ============================================================
-
-if "_aura_global_error_handler_loaded" not in globals():
-
-    _aura_global_error_handler_loaded = True
-
-    try:
-
-        @bot.tree.error
-        async def _aura_tree_error(
-            interaction,
-            error
-        ):
-
-            try:
-                original = getattr(
-                    error,
-                    "original",
-                    error
-                )
-
-                print(
-                    "[AURA ERROR]",
-                    repr(original)
-                )
-
-                message = (
-                    "❌ Ocorreu um erro ao executar este comando.\n"
-                    "O erro foi registrado pelo sistema."
-                )
-
-                if interaction.response.is_done():
-
-                    await interaction.followup.send(
-                        message,
-                        ephemeral=True
-                    )
-
-                else:
-
-                    await interaction.response.send_message(
-                        message,
-                        ephemeral=True
-                    )
-
-            except Exception as handler_error:
-
-                print(
-                    "[AURA ERROR HANDLER]",
-                    repr(handler_error)
-                )
-
-    except Exception as exc:
-
-        print(
-            "[AURA] Não foi possível registrar "
-            "o handler global:",
-            repr(exc)
-        )
-
-# ============================================================
-# AURA PRO CORE
-# ============================================================
-
-_AURA_ROOT = os.path.dirname(
-    os.path.abspath(__file__)
-)
-
-_AURA_DATA = os.path.join(
-    _AURA_ROOT,
-    "aura_data"
-)
-
-os.makedirs(
-    _AURA_DATA,
-    exist_ok=True
-)
-
-_AURA_CONFIG_PATH = os.path.join(
-    _AURA_DATA,
-    "config.json"
-)
-
-_AURA_STATS_PATH = os.path.join(
-    _AURA_DATA,
-    "stats_runtime.json"
-)
-
-
-def aura_load_config():
-
-    try:
-
-        with open(
-            _AURA_CONFIG_PATH,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            return json.load(file)
-
-    except Exception:
-
-        return {
-            "appearance": {},
-            "modules": {},
-            "community": {},
-            "security": {},
-            "economy": {},
-            "tickets": {},
-            "automation": {},
-            "logs": {}
-        }
-
-
-def aura_save_config(data):
-
-    try:
-
-        temporary = (
-            _AURA_CONFIG_PATH
-            + ".tmp"
-        )
-
-        with open(
-            temporary,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                data,
-                file,
-                indent=4,
-                ensure_ascii=False
-            )
-
-        os.replace(
-            temporary,
-            _AURA_CONFIG_PATH
-        )
-
-        return True
-
-    except Exception as error:
-
-        print(
-            "[AURA CONFIG ERROR]",
-            repr(error)
-        )
-
-        return False
-
-
-def aura_runtime_stats():
-
-    try:
-
-        with open(
-            _AURA_STATS_PATH,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            return json.load(file)
-
-    except Exception:
-
-        return {
-            "commands_used": 0,
-            "commands": {},
-            "started_at": None
-        }
-
-
-def aura_save_runtime_stats(data):
-
-    try:
-
-        with open(
-            _AURA_STATS_PATH,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                data,
-                file,
-                indent=4,
-                ensure_ascii=False
-            )
-
-    except Exception:
-        pass
-
-
-def aura_track_command(name):
-
-    try:
-
-        data = aura_runtime_stats()
-
-        data["commands_used"] = (
-            int(
-                data.get(
-                    "commands_used",
-                    0
-                )
-            )
-            + 1
-        )
-
-        commands_data = data.setdefault(
-            "commands",
-            {}
-        )
-
-        commands_data[name] = (
-            int(
-                commands_data.get(
-                    name,
-                    0
-                )
-            )
-            + 1
-        )
-
-        aura_save_runtime_stats(
-            data
-        )
-
-    except Exception:
-        pass
-
-
-def aura_color(name="primary"):
-
-    try:
-
-        cfg = aura_load_config()
-
-        appearance = cfg.get(
-            "appearance",
-            {}
-        )
-
-        return int(
-            appearance.get(
-                name,
-                0x5865F2
-            )
-        )
-
-    except Exception:
-
-        return 0x5865F2
-
-
-def aura_embed(
-    title,
-    description="",
-    color=None,
-    icon=None
-):
-
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=(
-            color
-            if color is not None
-            else aura_color()
-        )
-    )
-
-    cfg = aura_load_config()
-
-    appearance = cfg.get(
-        "appearance",
-        {}
-    )
-
-    if appearance.get(
-        "show_timestamp",
-        True
-    ):
-        embed.timestamp = datetime.now()
-
-    if icon:
-        try:
-            embed.set_thumbnail(
-                url=icon
-            )
-        except Exception:
-            pass
-
-    if appearance.get(
-        "show_footer",
-        True
-    ):
-        embed.set_footer(
-            text=appearance.get(
-                "footer",
-                "AURA PRO • Sistema de gerenciamento"
-            )
-        )
-
-    return embed
-
-
-def aura_success(
-    title,
-    description=""
-):
-
-    return aura_embed(
-        title,
-        description,
-        aura_color("success")
-    )
-
-
-def aura_error(
-    title,
-    description=""
-):
-
-    return aura_embed(
-        title,
-        description,
-        aura_color("danger")
-    )
-
-
-def aura_warning(
-    title,
-    description=""
-):
-
-    return aura_embed(
-        title,
-        description,
-        aura_color("warning")
-    )
-
-
-def aura_info(
-    title,
-    description=""
-):
-
-    return aura_embed(
-        title,
-        description,
-        aura_color("info")
-    )
-
-
-def aura_is_manager(interaction):
-
-    try:
-
-        permissions = (
-            interaction.user.guild_permissions
-        )
-
-        return bool(
-            permissions.administrator
-            or permissions.manage_guild
-        )
-
-    except Exception:
-
-        return False
-
-
-def aura_commands_count():
-
-    try:
-
-        tree_object = getattr(
-            bot,
-            "tree",
-            None
-        )
-
-        if tree_object is None:
-            return 0
-
-        return len(
-            tree_object.get_commands()
-        )
-
-    except Exception:
-
-        return 0
-
-
-def aura_guild_icon(guild):
-
-    try:
-
-        if guild.icon:
-            return guild.icon.url
-
-    except Exception:
-        pass
-
-    return None
-
-
-def aura_human_number(value):
-
-    try:
-
-        return f"{int(value):,}".replace(
-            ",",
-            "."
-        )
-
-    except Exception:
-
-        return str(value)
-
-# ============================================================
-# AURA PRO INTERACTIVE UI
-# ============================================================
-
-
-class AuraBackButton(discord.ui.Button):
-
-    def __init__(self):
-
-        super().__init__(
-            label="Voltar",
-            emoji="↩️",
-            style=discord.ButtonStyle.secondary,
-            row=4
-        )
-
-    async def callback(self, interaction):
-
-        await aura_open_main_panel(
-            interaction,
-            edit=True
-        )
-
-
-class AuraCloseButton(discord.ui.Button):
-
-    def __init__(self):
-
-        super().__init__(
-            label="Fechar",
-            emoji="✖️",
-            style=discord.ButtonStyle.danger,
-            row=4
-        )
-
-    async def callback(self, interaction):
-
-        try:
-
-            await interaction.response.edit_message(
-                content="",
-                embed=None,
-                view=None
-            )
-
-        except Exception:
-
-            try:
-
-                await interaction.response.send_message(
-                    "Painel fechado.",
-                    ephemeral=True
-                )
-
-            except Exception:
-                pass
-
-
-class AuraMainPanel(discord.ui.View):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=600
-        )
-
-    async def interaction_check(
-        self,
-        interaction
-    ):
-
-        if not aura_is_manager(
-            interaction
-        ):
-
-            await interaction.response.send_message(
-                embed=aura_error(
-                    "Acesso negado",
-                    "Você precisa possuir **Administrador** "
-                    "ou **Gerenciar Servidor**."
-                ),
-                ephemeral=True
-            )
-
-            return False
-
-        return True
-
-    @discord.ui.button(
-        label="Visão Geral",
-        emoji="◈",
-        style=discord.ButtonStyle.primary,
-        row=0
-    )
-    async def overview(
-        self,
-        interaction,
-        button
-    ):
-
-        guild = interaction.guild
-
-        embed = aura_embed(
-            "◈ AURA • Visão Geral",
-            (
-                f"## {guild.name}\n\n"
-                f"👥 **Membros**\n"
-                f"`{aura_human_number(guild.member_count or 0)}`\n\n"
-                f"💬 **Canais**\n"
-                f"`{len(guild.channels)}`\n\n"
-                f"🏷️ **Cargos**\n"
-                f"`{len(guild.roles)}`\n\n"
-                f"⚡ **Comandos**\n"
-                f"`{aura_commands_count()}`\n\n"
-                f"📡 **Latência**\n"
-                f"`{round(bot.latency * 1000)}ms`"
-            ),
-            icon=aura_guild_icon(guild)
-        )
-
-        view = AuraOverviewView()
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=view
-        )
-
-    @discord.ui.button(
-        label="Tickets",
-        emoji="🎫",
-        style=discord.ButtonStyle.secondary,
-        row=0
-    )
-    async def tickets(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "tickets"
-        )
-
-    @discord.ui.button(
-        label="Comunidade",
-        emoji="🌐",
-        style=discord.ButtonStyle.secondary,
-        row=0
-    )
-    async def community(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "community"
-        )
-
-    @discord.ui.button(
-        label="Segurança",
-        emoji="🛡️",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def security(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "security"
-        )
-
-    @discord.ui.button(
-        label="Economia",
-        emoji="💰",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def economy(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "economy"
-        )
-
-    @discord.ui.button(
-        label="Logs",
-        emoji="📜",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def logs(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "logs"
-        )
-
-    @discord.ui.button(
-        label="Automação",
-        emoji="⚡",
-        style=discord.ButtonStyle.secondary,
-        row=1
-    )
-    async def automation(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "automation"
-        )
-
-    @discord.ui.button(
-        label="Aparência",
-        emoji="🎨",
-        style=discord.ButtonStyle.secondary,
-        row=2
-    )
-    async def appearance(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "appearance"
-        )
-
-    @discord.ui.button(
-        label="Diagnóstico",
-        emoji="🧪",
-        style=discord.ButtonStyle.success,
-        row=2
-    )
-    async def diagnostic(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_module(
-            interaction,
-            "diagnostics"
-        )
-
-    @discord.ui.button(
-        label="Atualizar",
-        emoji="🔄",
-        style=discord.ButtonStyle.primary,
-        row=3
-    )
-    async def refresh(
-        self,
-        interaction,
-        button
-    ):
-
-        await aura_open_main_panel(
-            interaction,
-            edit=True
-        )
-
-    @discord.ui.button(
-        label="Fechar",
-        emoji="✖️",
-        style=discord.ButtonStyle.danger,
-        row=3
-    )
-    async def close(
-        self,
-        interaction,
-        button
-    ):
-
-        await interaction.response.edit_message(
-            content="",
-            embed=None,
-            view=None
-        )
-
-
-class AuraOverviewView(discord.ui.View):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=600
-        )
-
-        self.add_item(
-            AuraBackButton()
-        )
-
-        self.add_item(
-            AuraCloseButton()
-        )
-
-
-async def aura_open_main_panel(
-    interaction,
-    edit=False
-):
-
-    guild = interaction.guild
-
-    cfg = aura_load_config()
-
-    modules = cfg.get(
-        "modules",
-        {}
-    )
-
-    active = sum(
-        1
-        for value in modules.values()
-        if value
-    )
-
-    total = len(modules)
-
-    embed = aura_embed(
-        "✦ AURA PRO • Central de Controle",
-        (
-            f"## {guild.name}\n\n"
-            "Gerencie os principais sistemas do servidor "
-            "através de uma única interface.\n\n"
-            "### Módulos\n"
-            f"🟢 **{active}/{total}** módulos ativos\n\n"
-            "Use os botões abaixo para acessar "
-            "as centrais."
-        ),
-        icon=aura_guild_icon(guild)
-    )
-
-    if edit:
-
-        await interaction.response.edit_message(
-            embed=embed,
-            view=AuraMainPanel()
-        )
-
-    else:
-
-        await interaction.response.send_message(
-            embed=embed,
-            view=AuraMainPanel(),
-            ephemeral=True
-        )
-
-
-async def aura_open_module(
-    interaction,
-    module
-):
-
-    cfg = aura_load_config()
-
-    descriptions = {
-
-        "tickets": (
-            "🎫 **Tickets**\n\n"
-            "Gerencie painéis, categorias, permissões, "
-            "logs e configurações do atendimento."
-        ),
-
-        "community": (
-            "🌐 **Comunidade**\n\n"
-            "Anúncios, embeds, sugestões, boas-vindas, "
-            "convites e ferramentas sociais."
-        ),
-
-        "security": (
-            "🛡️ **Segurança**\n\n"
-            "AutoMod, Anti-Spam, Anti-Link, "
-            "proteções e registros."
-        ),
-
-        "economy": (
-            "💰 **Economia**\n\n"
-            "Saldo, recompensas, loja, ranking "
-            "e configurações econômicas."
-        ),
-
-        "logs": (
-            "📜 **Logs**\n\n"
-            "Central de auditoria e eventos."
-        ),
-
-        "automation": (
-            "⚡ **Automação**\n\n"
-            "Boas-vindas, saídas, tarefas e rotinas."
-        ),
-
-        "appearance": (
-            "🎨 **Aparência**\n\n"
-            "Cores, rodapé e identidade visual."
-        ),
-
-        "diagnostics": (
-            "🧪 **Diagnóstico**\n\n"
-            "Verifique o estado interno dos sistemas."
-        ),
-    }
-
-    enabled = cfg.get(
-        "modules",
-        {}
-    ).get(
-        module,
-        True
-    )
-
-    state = (
-        "🟢 ATIVO"
-        if enabled
-        else "🔴 DESATIVADO"
-    )
-
-    description = (
-        descriptions.get(
-            module,
-            "Módulo AURA."
-        )
-        + f"\n\n**Estado:** {state}"
-    )
-
-    embed = aura_embed(
-        f"AURA PRO • {module.upper()}",
-        description
-    )
-
-    view = AuraModuleView(
-        module
-    )
-
-    await interaction.response.edit_message(
-        embed=embed,
-        view=view
-    )
-
-
-class AuraModuleView(discord.ui.View):
-
-    def __init__(self, module):
-
-        super().__init__(
-            timeout=600
-        )
-
-        self.module = module
-
-        self.add_item(
-            AuraBackButton()
-        )
-
-        self.add_item(
-            AuraCloseButton()
-        )
-
-# ============================================================
-# AURA PRO GLOBAL ERROR SYSTEM
-# ============================================================
-
-if not globals().get(
-    "_AURA_ERROR_HANDLER_INSTALLED",
-    False
-):
-
-    _AURA_ERROR_HANDLER_INSTALLED = True
-
-    try:
-
-        @bot.tree.error
-        async def _aura_global_tree_error(
-            interaction,
-            error
-        ):
-
-            original_error = getattr(
-                error,
-                "original",
-                error
-            )
-
-            print(
-                "\n[AURA ERROR]"
-            )
-
-            traceback.print_exc()
-
-            embed = aura_error(
-                "Não foi possível executar",
-                (
-                    "O AURA encontrou um erro durante "
-                    "a execução deste comando.\n\n"
-                    "O erro foi registrado no console."
-                )
-            )
-
-            try:
-
-                if interaction.response.is_done():
-
-                    await interaction.followup.send(
-                        embed=embed,
-                        ephemeral=True
-                    )
-
-                else:
-
-                    await interaction.response.send_message(
-                        embed=embed,
-                        ephemeral=True
-                    )
-
-            except Exception:
-
-                pass
-
-    except Exception as error:
-
-        print(
-            "[AURA] Falha ao instalar "
-            "tratamento global:",
-            repr(error)
-        )
-
-
-# ============================================================
-# AURA VIP SYSTEM START
-# ============================================================
-
-import asyncio
-import json
-import os
-import time
-from datetime import datetime, timezone, timedelta
-
-import discord
-from discord import app_commands
-from discord.ext import commands
-
-
-# ============================================================
-# AURA VIP STORAGE
-# ============================================================
-
-AURA_VIP_DATA = os.path.join(
-    os.path.dirname(__file__),
-    "aura_data"
-)
-
-AURA_VIP_CONFIG = os.path.join(
-    AURA_VIP_DATA,
-    "vip_config.json"
-)
-
-AURA_VIP_STATS = os.path.join(
-    AURA_VIP_DATA,
-    "vip_stats.json"
-)
-
-AURA_VIP_TICKETS = os.path.join(
-    AURA_VIP_DATA,
-    "vip_tickets.json"
-)
-
-AURA_VIP_PONTO = os.path.join(
-    AURA_VIP_DATA,
-    "vip_ponto.json"
-)
-
-AURA_VIP_INCIDENTS = os.path.join(
-    AURA_VIP_DATA,
-    "vip_incidents.json"
-)
-
-AURA_VIP_ACHIEVEMENTS = os.path.join(
-    AURA_VIP_DATA,
-    "vip_achievements.json"
-)
-
-
-def aura_vip_load(path, default):
-
-    try:
-        if not os.path.exists(path):
-            return default
-
-        with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-
-    except Exception:
-        return default
-
-
-def aura_vip_save(path, data):
-
-    os.makedirs(
-        os.path.dirname(path),
-        exist_ok=True
-    )
-
-    temp = path + ".tmp"
-
-    with open(temp, "w", encoding="utf-8") as file:
-        json.dump(
-            data,
-            file,
-            ensure_ascii=False,
-            indent=4
-        )
-
-    os.replace(temp, path)
-
-
-def aura_vip_config():
-
-    return aura_vip_load(
-        AURA_VIP_CONFIG,
-        {}
-    )
-
-
-# ============================================================
-# VIP BRANDING
-# ============================================================
-
-def aura_vip_brand():
-
-    config = aura_vip_config()
-
-    return config.get(
-        "branding",
-        {
-            "name": "AURA VIP",
-            "emoji": "✦",
-            "primary_color": 0x8B5CF6,
-            "success_color": 0x22C55E,
-            "warning_color": 0xF59E0B,
-            "error_color": 0xEF4444,
-            "ticket_color": 0x6366F1,
-            "footer": "AURA VIP"
-        }
-    )
-
-
-def aura_vip_embed(
-    title,
-    description=None,
-    color=None,
-    interaction=None
-):
-
-    brand = aura_vip_brand()
-
-    if color is None:
-        color = brand.get(
-            "primary_color",
-            0x8B5CF6
-        )
-
-    embed = discord.Embed(
-        title=f"{brand.get('emoji', '✦')}  {title}",
-        description=description or "",
-        color=color,
-        timestamp=datetime.now(timezone.utc)
-    )
-
-    if interaction and interaction.guild:
-
-        if interaction.guild.icon:
-            embed.set_thumbnail(
-                url=interaction.guild.icon.url
-            )
-
-    embed.set_footer(
-        text=brand.get(
-            "footer",
-            "AURA VIP"
-        )
-    )
-
-    return embed
-
-
-# ============================================================
-# UTILITÁRIOS
-# ============================================================
-
-def aura_vip_user_name(user):
-
-    return getattr(
-        user,
-        "display_name",
-        getattr(user, "name", "Usuário")
-    )
-
-
-def aura_vip_minutes(seconds):
-
-    if seconds <= 0:
-        return 0
-
-    return int(seconds // 60)
-
-
-def aura_vip_human_seconds(seconds):
-
-    seconds = max(0, int(seconds))
-
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    secs = seconds % 60
-
-    if hours:
-        return f"{hours}h {minutes}m"
-
-    if minutes:
-        return f"{minutes}m {secs}s"
-
-    return f"{secs}s"
-
-
-def aura_vip_now():
-
-    return datetime.now(timezone.utc)
-
-
-def aura_vip_iso():
-
-    return aura_vip_now().isoformat()
-
-
-def aura_vip_parse_iso(value):
-
-    try:
-        return datetime.fromisoformat(value)
-
-    except Exception:
-        return aura_vip_now()
-
-
-def aura_vip_manager(interaction):
-
-    if not interaction.guild:
-        return False
-
-    permissions = interaction.user.guild_permissions
-
-    return (
-        permissions.administrator
-        or permissions.manage_guild
-        or permissions.manage_channels
-    )
-
-
-async def aura_vip_respond(
-    interaction,
-    *,
-    embed=None,
-    content=None,
-    ephemeral=True,
-    view=None
-):
-
-    if interaction.response.is_done():
-
-        await interaction.followup.send(
-            content=content,
-            embed=embed,
-            ephemeral=ephemeral,
-            view=view
-        )
-
-    else:
-
-        await interaction.response.send_message(
-            content=content,
-            embed=embed,
-            ephemeral=ephemeral,
-            view=view
-        )
-
-
-# ============================================================
-# ESTATÍSTICAS
-# ============================================================
-
-def aura_vip_stats(guild_id):
-
-    data = aura_vip_load(
-        AURA_VIP_STATS,
-        {}
-    )
-
-    gid = str(guild_id)
-
-    if gid not in data:
-
-        data[gid] = {
-            "messages": 0,
-            "commands": 0,
-            "joins": 0,
-            "leaves": 0,
-            "tickets": 0,
-            "tickets_closed": 0,
-            "moderation": 0,
-            "points": 0
-        }
-
-        aura_vip_save(
-            AURA_VIP_STATS,
-            data
-        )
-
-    return data[gid]
-
-
-def aura_vip_increment(
-    guild_id,
-    key,
-    amount=1
-):
-
-    data = aura_vip_load(
-        AURA_VIP_STATS,
-        {}
-    )
-
-    gid = str(guild_id)
-
-    if gid not in data:
-        data[gid] = {}
-
-    data[gid][key] = (
-        data[gid].get(key, 0) + amount
-    )
-
-    aura_vip_save(
-        AURA_VIP_STATS,
-        data
-    )
-
-
-# ============================================================
-# TICKETS VIP
-# ============================================================
-
-VIP_TICKET_TYPES = {
-    "suporte": {
-        "name": "Suporte",
-        "emoji": "🛠️",
-        "description": "Preciso de ajuda com o servidor."
-    },
-
-    "financeiro": {
-        "name": "Financeiro",
-        "emoji": "💳",
-        "description": "Assuntos financeiros e pagamentos."
-    },
-
-    "denuncia": {
-        "name": "Denúncia",
-        "emoji": "🚨",
-        "description": "Denunciar um usuário ou situação."
-    },
-
-    "parceria": {
-        "name": "Parceria",
-        "emoji": "🤝",
-        "description": "Solicitar ou tratar uma parceria."
-    },
-
-    "vip": {
-        "name": "VIP",
-        "emoji": "👑",
-        "description": "Atendimento exclusivo VIP."
-    }
-}
-
-
-def aura_vip_ticket_data():
-
-    return aura_vip_load(
-        AURA_VIP_TICKETS,
-        {}
-    )
-
-
-def aura_vip_ticket_save(data):
-
-    aura_vip_save(
-        AURA_VIP_TICKETS,
-        data
-    )
-
-
-class AuraVIPTicketSelect(
-    discord.ui.Select
-):
-
-    def __init__(self):
-
-        options = []
-
-        for key, value in VIP_TICKET_TYPES.items():
-
-            options.append(
-                discord.SelectOption(
-                    label=value["name"],
-                    description=value["description"][:100],
-                    emoji=value["emoji"],
-                    value=key
-                )
-            )
-
-        super().__init__(
-            placeholder="Selecione o tipo de atendimento...",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="aura_vip_ticket_select"
-        )
-
-    async def callback(self, interaction):
-
-        ticket_type = self.values[0]
-
-        await aura_vip_create_ticket(
-            interaction,
-            ticket_type
-        )
-
-
-class AuraVIPTicketView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-        self.add_item(
-            AuraVIPTicketSelect()
-        )
-
-
-async def aura_vip_create_ticket(
-    interaction,
-    ticket_type
-):
-
-    guild = interaction.guild
-
-    if not guild:
-        return
-
-    data = aura_vip_ticket_data()
-
-    guild_data = data.setdefault(
-        str(guild.id),
-        {}
-    )
-
-    user_key = str(interaction.user.id)
-
-    for channel_id, ticket in guild_data.items():
-
-        if (
-            ticket.get("owner_id")
-            == interaction.user.id
-            and ticket.get("status")
-            == "open"
-        ):
-
-            channel = guild.get_channel(
-                int(channel_id)
-            )
-
-            if channel:
-
-                embed = aura_vip_embed(
-                    "Atendimento já existente",
-                    (
-                        "Você já possui um ticket aberto.\n\n"
-                        f"🎫 **Ticket:** {channel.mention}\n"
-                        "Você pode continuar seu atendimento por lá."
-                    ),
-                    0xF59E0B,
-                    interaction
-                )
-
-                await aura_vip_respond(
-                    interaction,
-                    embed=embed
-                )
-
-                return
-
-    config = aura_vip_config().get(
-        "tickets",
-        {}
-    )
-
-    category = None
-
-    category_id = config.get(
-        "category_id"
-    )
-
-    if category_id:
-
-        category = guild.get_channel(
-            int(category_id)
-        )
-
-    if category is None:
-
-        category = discord.utils.get(
-            guild.categories,
-            name="🎫・ATENDIMENTOS"
-        )
-
-    overwrites = {
-
-        guild.default_role:
-            discord.PermissionOverwrite(
-                view_channel=False
-            ),
-
-        interaction.user:
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True
-            )
-    }
-
-    support_role_id = config.get(
-        "support_role_id"
-    )
-
-    support_role = None
-
-    if support_role_id:
-
-        support_role = guild.get_role(
-            int(support_role_id)
-        )
-
-    if support_role:
-
-        overwrites[support_role] = (
-            discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
-        )
-
-    type_data = VIP_TICKET_TYPES[
-        ticket_type
-    ]
-
-    safe_name = (
-        f"ticket-{interaction.user.name}"
-        .lower()
-        .replace(" ", "-")
-    )
-
-    safe_name = "".join(
-        char
-        for char in safe_name
-        if char.isalnum() or char == "-"
-    )[:90]
-
-    channel = await guild.create_text_channel(
-        name=safe_name,
-        category=category,
-        overwrites=overwrites,
-        reason="AURA VIP Ticket"
-    )
-
-    opened_at = aura_vip_iso()
-
-    guild_data[str(channel.id)] = {
-
-        "owner_id": interaction.user.id,
-        "owner_name": aura_vip_user_name(
-            interaction.user
-        ),
-
-        "type": ticket_type,
-
-        "status": "open",
-
-        "priority": "normal",
-
-        "assigned_to": None,
-
-        "opened_at": opened_at,
-
-        "claimed_at": None,
-
-        "closed_at": None,
-
-        "sla_minutes":
-            config.get(
-                "sla_minutes",
-                30
-            )
-    }
-
-    aura_vip_ticket_save(data)
-
-    aura_vip_increment(
-        guild.id,
-        "tickets"
-    )
-
-    embed = aura_vip_embed(
-        "ATENDIMENTO VIP",
-        (
-            "╭────────────────────────────╮\n"
-            "│  ✦ **CENTRAL DE ATENDIMENTO**\n"
-            "╰────────────────────────────╯\n\n"
-
-            f"🎫 **Categoria:** {type_data['emoji']} "
-            f"{type_data['name']}\n"
-
-            f"👤 **Cliente:** {interaction.user.mention}\n"
-
-            "🟢 **Status:** `ABERTO`\n"
-
-            "🟡 **Prioridade:** `NORMAL`\n"
-
-            f"⏱️ **SLA:** "
-            f"`{config.get('sla_minutes', 30)} minutos`\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-
-            "📌 **Como funciona**\n"
-            "Nossa equipe será notificada e poderá assumir "
-            "este atendimento.\n\n"
-
-            "💡 Explique seu problema com o máximo de detalhes.\n"
-            "📎 Você pode enviar imagens e arquivos.\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-
-            "🔐 **Central VIP protegida**"
-        ),
-        aura_vip_brand().get(
-            "ticket_color",
-            0x6366F1
-        ),
-        interaction
-    )
-
-    embed.add_field(
-        name="📅 Aberto em",
-        value=f"<t:{int(time.time())}:F>",
-        inline=True
-    )
-
-    embed.add_field(
-        name="⏳ SLA",
-        value=f"<t:{int(time.time()) + config.get('sla_minutes', 30) * 60}:R>",
-        inline=True
-    )
-
-    embed.add_field(
-        name="🆔 ID",
-        value=f"`{channel.id}`",
-        inline=True
-    )
-
-    view = AuraVIPTicketControls()
-
-    await channel.send(
-        content=(
-            interaction.user.mention
-            + (
-                f" {support_role.mention}"
-                if support_role
-                else ""
-            )
-        ),
-        embed=embed,
-        view=view
-    )
-
-    await aura_vip_respond(
-        interaction,
-        embed=aura_vip_embed(
-            "Ticket criado",
-            (
-                f"Seu atendimento foi criado em "
-                f"{channel.mention}.\n\n"
-                "A equipe poderá assumir o atendimento "
-                "através do painel."
-            ),
-            0x22C55E,
-            interaction
-        )
-    )
-
-
-class AuraVIPTicketControls(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="Assumir",
-        emoji="👤",
-        style=discord.ButtonStyle.primary,
-        custom_id="aura_vip_ticket_claim"
-    )
-    async def claim(
-        self,
-        interaction,
-        button
-    ):
-
-        if not aura_vip_manager(interaction):
-
-            await aura_vip_respond(
-                interaction,
-                embed=aura_vip_embed(
-                    "Acesso negado",
-                    "Você não possui permissão para assumir tickets.",
-                    0xEF4444,
-                    interaction
-                )
-            )
-
-            return
-
-        data = aura_vip_ticket_data()
-        guild_data = data.get(
-            str(interaction.guild.id),
-            {}
-        )
-
-        ticket = guild_data.get(
-            str(interaction.channel.id)
-        )
-
-        if not ticket:
-
-            return
-
-        ticket["assigned_to"] = (
-            interaction.user.id
-        )
-
-        ticket["claimed_at"] = aura_vip_iso()
-
-        ticket["status"] = "claimed"
-
-        aura_vip_ticket_save(data)
-
-        await interaction.channel.send(
-            embed=aura_vip_embed(
-                "Atendimento assumido",
-                (
-                    f"👤 {interaction.user.mention} "
-                    "assumiu este atendimento.\n\n"
-                    "🟢 O ticket agora está sendo atendido."
-                ),
-                0x22C55E,
-                interaction
-            )
-        )
-
-        await aura_vip_respond(
-            interaction,
-            content="Atendimento assumido.",
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Prioridade",
-        emoji="🔥",
-        style=discord.ButtonStyle.secondary,
-        custom_id="aura_vip_ticket_priority"
-    )
-    async def priority(
-        self,
-        interaction,
-        button
-    ):
-
-        if not aura_vip_manager(interaction):
-
-            await aura_vip_respond(
-                interaction,
-                content="Sem permissão.",
-                ephemeral=True
-            )
-
-            return
-
-        data = aura_vip_ticket_data()
-
-        ticket = data.get(
-            str(interaction.guild.id),
-            {}
-        ).get(
-            str(interaction.channel.id)
-        )
-
-        if not ticket:
-            return
-
-        levels = [
-            "normal",
-            "alta",
-            "urgente",
-            "critica"
-        ]
-
-        current = ticket.get(
-            "priority",
-            "normal"
-        )
-
-        index = levels.index(current)
-
-        next_level = levels[
-            (index + 1) % len(levels)
-        ]
-
-        ticket["priority"] = next_level
-
-        aura_vip_ticket_save(data)
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "Prioridade atualizada",
-                (
-                    f"🔥 Nova prioridade: "
-                    f"`{next_level.upper()}`"
-                ),
-                0xF59E0B,
-                interaction
-            )
-        )
-
-    @discord.ui.button(
-        label="Fechar",
-        emoji="🔒",
-        style=discord.ButtonStyle.danger,
-        custom_id="aura_vip_ticket_close"
-    )
-    async def close(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ticket_data()
-
-        guild_data = data.get(
-            str(interaction.guild.id),
-            {}
-        )
-
-        ticket = guild_data.get(
-            str(interaction.channel.id)
-        )
-
-        if not ticket:
-            return
-
-        if (
-            interaction.user.id
-            != ticket.get("owner_id")
-            and not aura_vip_manager(interaction)
-        ):
-
-            await aura_vip_respond(
-                interaction,
-                content="Você não pode fechar este ticket.",
-                ephemeral=True
-            )
-
-            return
-
-        ticket["status"] = "closed"
-
-        ticket["closed_at"] = aura_vip_iso()
-
-        aura_vip_ticket_save(data)
-
-        aura_vip_increment(
-            interaction.guild.id,
-            "tickets_closed"
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "Ticket encerrado",
-                (
-                    "🔒 Este atendimento foi encerrado.\n\n"
-                    "O canal será arquivado pela equipe."
-                ),
-                0xEF4444,
-                interaction
-            )
-        )
-
-        await interaction.channel.edit(
-            name=(
-                "closed-"
-                + interaction.channel.name
-            )[:100]
-        )
-
-
-# ============================================================
-# PAINEL DE TICKETS
-# ============================================================
-
-class AuraVIPTicketPanelView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-        self.add_item(
-            AuraVIPTicketSelect()
-        )
-
-
-def aura_vip_ticket_panel_embed(guild):
-
-    embed = aura_vip_embed(
-        "CENTRAL DE ATENDIMENTO",
-        (
-            "╭──────────────────────────────╮\n"
-            "│       ✦ **AURA VIP TICKETS**\n"
-            "╰──────────────────────────────╯\n\n"
-
-            "Escolha abaixo o departamento que melhor "
-            "descreve o seu atendimento.\n\n"
-
-            "🛠️ **Suporte**\n"
-            "Ajuda geral e suporte técnico.\n\n"
-
-            "💳 **Financeiro**\n"
-            "Pagamentos, compras e assuntos financeiros.\n\n"
-
-            "🚨 **Denúncia**\n"
-            "Envie uma denúncia para a equipe responsável.\n\n"
-
-            "🤝 **Parceria**\n"
-            "Solicitações e propostas de parceria.\n\n"
-
-            "👑 **VIP**\n"
-            "Atendimento prioritário e exclusivo.\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-
-            "🔐 Seus tickets são privados.\n"
-            "⏱️ O atendimento possui SLA.\n"
-            "📊 Todos os dados são contabilizados.\n"
-            "⭐ O atendimento pode receber avaliação.\n\n"
-
-            "**Selecione uma opção abaixo para começar.**"
-        ),
-        aura_vip_brand().get(
-            "ticket_color",
-            0x6366F1
-        )
-    )
-
-    embed.add_field(
-        name="🟢 Sistema",
-        value="`ONLINE`",
-        inline=True
-    )
-
-    embed.add_field(
-        name="🛡️ Privacidade",
-        value="`ATIVA`",
-        inline=True
-    )
-
-    embed.add_field(
-        name="⚡ SLA",
-        value="`VIP`",
-        inline=True
-    )
-
-    if guild.icon:
-        embed.set_thumbnail(
-            url=guild.icon.url
-        )
-
-    return embed
-
-
-# ============================================================
-# SISTEMA DE PONTO VIP
-# ============================================================
-
-def aura_vip_ponto_data():
-
-    return aura_vip_load(
-        AURA_VIP_PONTO,
-        {}
-    )
-
-
-def aura_vip_ponto_save(data):
-
-    aura_vip_save(
-        AURA_VIP_PONTO,
-        data
-    )
-
-
-def aura_vip_expected_datetime():
-
-    config = aura_vip_config().get(
-        "ponto",
-        {}
-    )
-
-    expected = config.get(
-        "expected_time",
-        "08:00"
-    )
-
-    hour, minute = map(
-        int,
-        expected.split(":")
-    )
-
-    now = aura_vip_now()
-
-    return now.replace(
-        hour=hour,
-        minute=minute,
-        second=0,
-        microsecond=0
-    )
-
-
-def aura_vip_register_presence(
-    guild_id,
-    user_id
-):
-
-    data = aura_vip_ponto_data()
-
-    guild = data.setdefault(
-        str(guild_id),
-        {}
-    )
-
-    user = guild.setdefault(
-        str(user_id),
-        {
-            "total_points": 0,
-            "total_late_minutes": 0,
-            "total_work_seconds": 0,
-            "total_pause_seconds": 0,
-            "presences": 0,
-            "on_time": 0,
-            "late_count": 0,
-            "history": []
-        }
-    )
-
-    now = aura_vip_now()
-
-    expected = aura_vip_expected_datetime()
-
-    delay_seconds = max(
-        0,
-        int(
-            (now - expected).total_seconds()
-        )
-    )
-
-    config = aura_vip_config().get(
-        "ponto",
-        {}
-    )
-
-    grace = int(
-        config.get(
-            "grace_minutes",
-            0
-        )
-    )
-
-    effective_delay = max(
-        0,
-        delay_seconds
-        - grace * 60
-    )
-
-    delay_minutes = (
-        effective_delay // 60
-    )
-
-    base_points = int(
-        config.get(
-            "points_on_presence",
-            10
-        )
-    )
-
-    punctuality_points = 0
-
-    if delay_minutes == 0:
-
-        punctuality_points = int(
-            config.get(
-                "points_per_ontime",
-                5
-            )
-        )
-
-        user["on_time"] += 1
-
-    else:
-
-        user["late_count"] += 1
-
-        user["total_late_minutes"] += (
-            delay_minutes
-        )
-
-    points = base_points + punctuality_points
-
-    # Não deixa atraso gerar pontos negativos.
-    late_penalty = (
-        delay_minutes
-        * int(
-            config.get(
-                "points_per_late_minute",
-                1
-            )
-        )
-    )
-
-    points = max(
-        0,
-        points - late_penalty
-    )
-
-    user["total_points"] += points
-
-    user["presences"] += 1
-
-    user["history"].append(
-        {
-            "type": "presence",
-            "timestamp": aura_vip_iso(),
-            "expected": expected.isoformat(),
-            "delay_minutes": delay_minutes,
-            "points": points
-        }
-    )
-
-    user["history"] = user[
-        "history"
-    ][-100:]
-
-    aura_vip_ponto_save(data)
-
-    return {
-        "delay_minutes": delay_minutes,
-        "points": points,
-        "on_time": delay_minutes == 0
-    }
-
-
-# ============================================================
-# VIEW DO PONTO
-# ============================================================
-
-class AuraVIPPontoView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="Confirmar presença",
-        emoji="🟢",
-        style=discord.ButtonStyle.success,
-        custom_id="aura_vip_presence"
-    )
-    async def presence(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        guild = data.setdefault(
-            str(interaction.guild.id),
-            {}
-        )
-
-        user_id = str(
-            interaction.user.id
-        )
-
-        current = guild.get(
-            user_id
-        )
-
-        if current and current.get(
-            "active"
-        ):
-
-            await aura_vip_respond(
-                interaction,
-                embed=aura_vip_embed(
-                    "Presença já confirmada",
-                    (
-                        "Sua jornada atual já está ativa.\n\n"
-                        "Use **Pausar** quando precisar interromper "
-                        "temporariamente sua atividade."
-                    ),
-                    0xF59E0B,
-                    interaction
-                )
-            )
-
-            return
-
-        result = aura_vip_register_presence(
-            interaction.guild.id,
-            interaction.user.id
-        )
-
-        user = guild.setdefault(
-            user_id,
-            {}
-        )
-
-        user["active"] = True
-        user["started_at"] = aura_vip_iso()
-        user["paused"] = False
-        user["paused_at"] = None
-        user["current_pause_seconds"] = 0
-
-        aura_vip_ponto_save(data)
-
-        if result["on_time"]:
-
-            status = "🟢 PONTUAL"
-
-            message = (
-                "Presença confirmada dentro do horário."
-            )
-
-        else:
-
-            status = "🟠 ATRASADO"
-
-            message = (
-                f"Você confirmou presença com "
-                f"**{result['delay_minutes']} minutos de atraso**."
-            )
-
-        embed = aura_vip_embed(
-            "PRESENÇA CONFIRMADA",
-            (
-                f"{message}\n\n"
-                f"📊 **Status:** {status}\n"
-                f"⭐ **Pontos recebidos:** `+{result['points']}`\n"
-                f"🕐 **Início:** <t:{int(time.time())}:T>\n\n"
-                "⏸️ Quando precisar interromper sua atividade, "
-                "utilize o botão **PAUSAR**."
-            ),
-            0x22C55E,
-            interaction
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed
-        )
-
-        await interaction.message.edit(
-            view=AuraVIPPontoActiveView()
-        )
-
-    @discord.ui.button(
-        label="Meu histórico",
-        emoji="📊",
-        style=discord.ButtonStyle.secondary,
-        custom_id="aura_vip_history"
-    )
-    async def history(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        user = data.get(
-            str(interaction.guild.id),
-            {}
-        ).get(
-            str(interaction.user.id),
-            {}
-        )
-
-        embed = aura_vip_embed(
-            "MEU DESEMPENHO",
-            (
-                f"👤 **Usuário:** {interaction.user.mention}\n\n"
-                f"⭐ **Pontos:** `{user.get('total_points', 0)}`\n"
-                f"🟢 **Presenças:** `{user.get('presences', 0)}`\n"
-                f"🟢 **Pontuais:** `{user.get('on_time', 0)}`\n"
-                f"🟠 **Atrasos:** `{user.get('late_count', 0)}`\n"
-                f"⏰ **Minutos de atraso:** "
-                f"`{user.get('total_late_minutes', 0)}`\n"
-                f"💼 **Tempo trabalhado:** "
-                f"`{aura_vip_human_seconds(user.get('total_work_seconds', 0))}`\n"
-                f"⏸️ **Tempo pausado:** "
-                f"`{aura_vip_human_seconds(user.get('total_pause_seconds', 0))}`"
-            ),
-            0x6366F1,
-            interaction
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed
-        )
-
-
-class AuraVIPPontoActiveView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="PAUSAR",
-        emoji="⏸️",
-        style=discord.ButtonStyle.primary,
-        custom_id="aura_vip_pause"
-    )
-    async def pause(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        guild = data.get(
-            str(interaction.guild.id),
-            {}
-        )
-
-        user = guild.get(
-            str(interaction.user.id)
-        )
-
-        if not user or not user.get(
-            "active"
-        ):
-
-            await aura_vip_respond(
-                interaction,
-                content="Você não possui uma jornada ativa.",
-                ephemeral=True
-            )
-
-            return
-
-        if user.get("paused"):
-
-            await aura_vip_respond(
-                interaction,
-                content="Sua jornada já está pausada.",
-                ephemeral=True
-            )
-
-            return
-
-        user["paused"] = True
-        user["paused_at"] = aura_vip_iso()
-
-        aura_vip_ponto_save(data)
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "JORNADA PAUSADA",
-                (
-                    "⏸️ Sua jornada foi pausada.\n\n"
-                    "O tempo desta pausa não será contabilizado "
-                    "como tempo trabalhado.\n\n"
-                    "Quando retornar, utilize **RETOMAR**."
-                ),
-                0xF59E0B,
-                interaction
-            )
-        )
-
-        await interaction.message.edit(
-            view=AuraVIPPontoPausedView()
-        )
-
-    @discord.ui.button(
-        label="Meu histórico",
-        emoji="📊",
-        style=discord.ButtonStyle.secondary,
-        custom_id="aura_vip_active_history"
-    )
-    async def history(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        user = data.get(
-            str(interaction.guild.id),
-            {}
-        ).get(
-            str(interaction.user.id),
-            {}
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "DESEMPENHO",
-                (
-                    f"⭐ Pontos: `{user.get('total_points', 0)}`\n"
-                    f"⏰ Atrasos: `{user.get('total_late_minutes', 0)} min`\n"
-                    f"💼 Trabalhado: "
-                    f"`{aura_vip_human_seconds(user.get('total_work_seconds', 0))}`"
-                ),
-                0x6366F1,
-                interaction
-            )
-        )
-
-
-class AuraVIPPontoPausedView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="RETOMAR",
-        emoji="▶️",
-        style=discord.ButtonStyle.success,
-        custom_id="aura_vip_resume"
-    )
-    async def resume(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        guild = data.get(
-            str(interaction.guild.id),
-            {}
-        )
-
-        user = guild.get(
-            str(interaction.user.id)
-        )
-
-        if not user:
-
-            return
-
-        if not user.get("paused"):
-
-            await aura_vip_respond(
-                interaction,
-                content="Sua jornada não está pausada.",
-                ephemeral=True
-            )
-
-            return
-
-        paused_at = aura_vip_parse_iso(
-            user["paused_at"]
-        )
-
-        pause_seconds = max(
-            0,
-            int(
-                (
-                    aura_vip_now()
-                    - paused_at
-                ).total_seconds()
-            )
-        )
-
-        user["total_pause_seconds"] = (
-            user.get(
-                "total_pause_seconds",
-                0
-            )
-            + pause_seconds
-        )
-
-        user["current_pause_seconds"] = (
-            pause_seconds
-        )
-
-        user["paused"] = False
-        user["paused_at"] = None
-
-        aura_vip_ponto_save(data)
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "JORNADA RETOMADA",
-                (
-                    f"▶️ Jornada retomada.\n\n"
-                    f"⏸️ Tempo da pausa: "
-                    f"`{aura_vip_human_seconds(pause_seconds)}`\n\n"
-                    "Esse período foi descontado do seu tempo "
-                    "trabalhado."
-                ),
-                0x22C55E,
-                interaction
-            )
-        )
-
-        await interaction.message.edit(
-            view=AuraVIPPontoActiveView()
-        )
-
-    @discord.ui.button(
-        label="Meu histórico",
-        emoji="📊",
-        style=discord.ButtonStyle.secondary,
-        custom_id="aura_vip_paused_history"
-    )
-    async def history(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_ponto_data()
-
-        user = data.get(
-            str(interaction.guild.id),
-            {}
-        ).get(
-            str(interaction.user.id),
-            {}
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "HISTÓRICO",
-                (
-                    f"⭐ Pontos: `{user.get('total_points', 0)}`\n"
-                    f"⏰ Atrasos: `{user.get('total_late_minutes', 0)} min`\n"
-                    f"⏸️ Pausas: "
-                    f"`{aura_vip_human_seconds(user.get('total_pause_seconds', 0))}`"
-                ),
-                0x6366F1,
-                interaction
-            )
-        )
-
-
-# ============================================================
-# FINALIZAR JORNADA
-# Não existe botão "SAIR" no painel.
-# A jornada pode ser encerrada por comando administrativo.
-# ============================================================
-
-async def aura_vip_finish_work(
-    guild_id,
-    user_id
-):
-
-    data = aura_vip_ponto_data()
-
-    guild = data.get(
-        str(guild_id),
-        {}
-    )
-
-    user = guild.get(
-        str(user_id)
-    )
-
-    if not user or not user.get("active"):
-        return None
-
-    now = aura_vip_now()
-
-    started = aura_vip_parse_iso(
-        user.get("started_at")
-    )
-
-    total = max(
-        0,
-        int(
-            (
-                now - started
-            ).total_seconds()
-        )
-    )
-
-    pause_seconds = user.get(
-        "total_pause_seconds",
-        0
-    )
-
-    if user.get("paused"):
-
-        paused_at = aura_vip_parse_iso(
-            user.get("paused_at")
-        )
-
-        pause_seconds += max(
-            0,
-            int(
-                (
-                    now - paused_at
-                ).total_seconds()
-            )
-        )
-
-    worked = max(
-        0,
-        total - pause_seconds
-    )
-
-    config = aura_vip_config().get(
-        "ponto",
-        {}
-    )
-
-    points = int(
-        (
-            worked / 3600
-        )
-        * config.get(
-            "points_per_work_hour",
-            20
-        )
-    )
-
-    user["total_work_seconds"] = (
-        user.get(
-            "total_work_seconds",
-            0
-        )
-        + worked
-    )
-
-    user["total_points"] = (
-        user.get(
-            "total_points",
-            0
-        )
-        + points
-    )
-
-    user["active"] = False
-    user["paused"] = False
-    user["paused_at"] = None
-
-    user.setdefault(
-        "history",
-        []
-    ).append(
-        {
-            "type": "finish",
-            "timestamp": aura_vip_iso(),
-            "worked_seconds": worked,
-            "points": points
-        }
-    )
-
-    aura_vip_ponto_save(data)
-
-    return {
-        "worked_seconds": worked,
-        "points": points
-    }
-
-
-# ============================================================
-# INCIDENT CENTER
-# ============================================================
-
-def aura_vip_create_incident(
-    guild_id,
-    incident_type,
-    description,
-    actor_id
-):
-
-    data = aura_vip_load(
-        AURA_VIP_INCIDENTS,
-        {}
-    )
-
-    guild = data.setdefault(
-        str(guild_id),
-        []
-    )
-
-    incident_id = (
-        f"INC-{int(time.time())}"
-    )
-
-    guild.append(
-        {
-            "id": incident_id,
-            "type": incident_type,
-            "description": description,
-            "actor_id": actor_id,
-            "created_at": aura_vip_iso(),
-            "status": "open"
-        }
-    )
-
-    aura_vip_save(
-        AURA_VIP_INCIDENTS,
-        data
-    )
-
-    return incident_id
-
-
-# ============================================================
-# CONQUISTAS
-# ============================================================
-
-VIP_ACHIEVEMENTS = {
-    "first_presence": {
-        "name": "Primeira Presença",
-        "emoji": "🟢",
-        "description": "Confirmou presença pela primeira vez."
-    },
-
-    "punctuality": {
-        "name": "Pontualidade",
-        "emoji": "⏱️",
-        "description": "Manteve presença pontual."
-    },
-
-    "worker": {
-        "name": "Colaborador",
-        "emoji": "💼",
-        "description": "Acumulou tempo de trabalho."
-    },
-
-    "ticket_master": {
-        "name": "Ticket Master",
-        "emoji": "🎫",
-        "description": "Participou de vários atendimentos."
-    }
-}
-
-
-# ============================================================
-# PAINEL VIP
-# ============================================================
-
-class AuraVIPPanelView(
-    discord.ui.View
-):
-
-    def __init__(self):
-
-        super().__init__(
-            timeout=180
-        )
-
-    @discord.ui.button(
-        label="Tickets",
-        emoji="🎫",
-        style=discord.ButtonStyle.primary
-    )
-    async def tickets(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = aura_vip_ticket_panel_embed(
-            interaction.guild
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed,
-            view=AuraVIPTicketPanelView()
-        )
-
-    @discord.ui.button(
-        label="Ponto",
-        emoji="🕐",
-        style=discord.ButtonStyle.success
-    )
-    async def ponto(
-        self,
-        interaction,
-        button
-    ):
-
-        embed = aura_vip_embed(
-            "CENTRAL DE PONTO",
-            (
-                "╭──────────────────────────╮\n"
-                "│       🕐 **PONTO VIP**\n"
-                "╰──────────────────────────╯\n\n"
-
-                "O AURA calcula automaticamente:\n\n"
-
-                "🟢 Presença\n"
-                "⏱️ Pontualidade\n"
-                "🟠 Minutos de atraso\n"
-                "💼 Tempo trabalhado\n"
-                "⏸️ Tempo pausado\n"
-                "⭐ Pontos conquistados\n\n"
-
-                "Quando você confirma presença, o sistema "
-                "compara o horário real com o horário esperado.\n\n"
-
-                "Exemplo:\n"
-                "`08:00` esperado\n"
-                "`08:10` confirmado\n\n"
-                "➡️ **10 minutos de atraso registrados.**\n\n"
-
-                "Durante a jornada, o botão é **PAUSAR**."
-            ),
-            0x22C55E,
-            interaction
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed,
-            view=AuraVIPPontoView()
-        )
-
-    @discord.ui.button(
-        label="Analytics",
-        emoji="📊",
-        style=discord.ButtonStyle.secondary
-    )
-    async def analytics(
-        self,
-        interaction,
-        button
-    ):
-
-        stats = aura_vip_stats(
-            interaction.guild.id
-        )
-
-        embed = aura_vip_embed(
-            "ANALYTICS VIP",
-            (
-                "📈 **Resumo do servidor**\n\n"
-                f"💬 Mensagens: `{stats.get('messages', 0)}`\n"
-                f"⚡ Comandos: `{stats.get('commands', 0)}`\n"
-                f"👥 Entradas: `{stats.get('joins', 0)}`\n"
-                f"🚪 Saídas: `{stats.get('leaves', 0)}`\n"
-                f"🎫 Tickets: `{stats.get('tickets', 0)}`\n"
-                f"🔒 Tickets encerrados: "
-                f"`{stats.get('tickets_closed', 0)}`\n"
-                f"🛡️ Moderação: `{stats.get('moderation', 0)}`\n"
-                f"⭐ Pontos distribuídos: "
-                f"`{stats.get('points', 0)}`"
-            ),
-            0x6366F1,
-            interaction
-        )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed
-        )
-
-    @discord.ui.button(
-        label="Incidentes",
-        emoji="🚨",
-        style=discord.ButtonStyle.danger
-    )
-    async def incidents(
-        self,
-        interaction,
-        button
-    ):
-
-        data = aura_vip_load(
-            AURA_VIP_INCIDENTS,
-            {}
-        )
-
-        incidents = data.get(
-            str(interaction.guild.id),
-            []
-        )
-
-        open_incidents = [
-            x for x in incidents
-            if x.get("status") == "open"
-        ]
-
-        embed = aura_vip_embed(
-            "INCIDENT CENTER",
-            (
-                f"🚨 Incidentes abertos: "
-                f"`{len(open_incidents)}`\n\n"
-                "O Incident Center VIP concentra "
-                "ocorrências e eventos críticos do servidor."
-            ),
-            0xEF4444,
-            interaction
-        )
-
-        for incident in open_incidents[-5:]:
-
-            embed.add_field(
-                name=(
-                    f"🚨 {incident.get('id')}"
-                ),
-                value=(
-                    f"**{incident.get('type')}**\n"
-                    f"{incident.get('description')[:200]}"
-                ),
-                inline=False
-            )
-
-        await aura_vip_respond(
-            interaction,
-            embed=embed
-        )
-
-
-# ============================================================
-# COMANDOS VIP
-# ============================================================
-
-@bot.tree.command(
-    name="ticket-vip",
-    description="Abre a central de tickets VIP."
-)
-async def aura_vip_ticket_command(
-    interaction
-):
-
-    embed = aura_vip_ticket_panel_embed(
-        interaction.guild
-    )
-
-    await aura_vip_respond(
-        interaction,
-        embed=embed,
-        view=AuraVIPTicketPanelView(),
-        ephemeral=False
-    )
-
-
-@bot.tree.command(
-    name="ponto-vip",
-    description="Abre a central de ponto VIP."
-)
-async def aura_vip_ponto_command(
-    interaction
-):
-
-    embed = aura_vip_embed(
-        "CENTRAL DE PONTO",
-        (
-            "🕐 **Sistema de presença VIP**\n\n"
-            "O sistema calcula automaticamente seus atrasos.\n\n"
-            "Exemplo:\n"
-            "Horário esperado: `08:00`\n"
-            "Confirmação: `08:10`\n"
-            "Atraso registrado: **10 minutos**\n\n"
-            "Durante sua jornada, utilize **PAUSAR** "
-            "quando precisar interromper temporariamente."
-        ),
-        0x22C55E,
-        interaction
-    )
-
-    await aura_vip_respond(
-        interaction,
-        embed=embed,
-        view=AuraVIPPontoView(),
-        ephemeral=False
-    )
-
-
-@bot.tree.command(
-    name="painel-vip",
-    description="Abre a central administrativa AURA VIP."
-)
-async def aura_vip_panel_command(
-    interaction
-):
-
-    if not aura_vip_manager(interaction):
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "Acesso negado",
-                "Você precisa de permissão administrativa.",
-                0xEF4444,
-                interaction
-            )
-        )
-
-        return
-
-    stats = aura_vip_stats(
-        interaction.guild.id
-    )
-
-    embed = aura_vip_embed(
-        "AURA VIP • CENTRAL",
-        (
-            "╭──────────────────────────────╮\n"
-            "│       ✦ **VIP CONTROL CENTER**\n"
-            "╰──────────────────────────────╯\n\n"
-
-            "A central administrativa concentra "
-            "os sistemas exclusivos da edição VIP.\n\n"
-
-            "🎫 Tickets avançados\n"
-            "🕐 Ponto inteligente\n"
-            "📊 Analytics\n"
-            "🚨 Incident Center\n"
-            "🤖 Automação\n"
-            "🏆 Conquistas\n"
-            "⚙️ Configurações\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-
-            f"🎫 Tickets: `{stats.get('tickets', 0)}`\n"
-            f"📊 Comandos: `{stats.get('commands', 0)}`\n"
-            f"🛡️ Incidentes: `{stats.get('moderation', 0)}`"
-        ),
-        0x8B5CF6,
-        interaction
-    )
-
-    await aura_vip_respond(
-        interaction,
-        embed=embed,
-        view=AuraVIPPanelView(),
-        ephemeral=True
-    )
-
-
-# ============================================================
-# HEALTH / STATUS
-# ============================================================
-
-@bot.tree.command(
-    name="vip-status",
-    description="Mostra o status dos sistemas VIP."
-)
-async def aura_vip_status_command(
-    interaction
-):
-
-    latency = round(
-        bot.latency * 1000
-    )
-
-    guild_count = len(
-        bot.guilds
-    )
-
-    embed = aura_vip_embed(
-        "AURA VIP • STATUS",
-        (
-            "🟢 **Sistema operacional**\n\n"
-            f"📡 Latência: `{latency}ms`\n"
-            f"🌐 Servidores: `{guild_count}`\n"
-            f"🎫 Tickets VIP: `ONLINE`\n"
-            f"🕐 Ponto VIP: `ONLINE`\n"
-            f"📊 Analytics: `ONLINE`\n"
-            f"🚨 Incident Center: `ONLINE`\n"
-            f"🏆 Achievements: `ONLINE`\n\n"
-            "✦ Todos os módulos VIP foram carregados."
-        ),
-        0x22C55E,
-        interaction
-    )
-
-    await aura_vip_respond(
-        interaction,
-        embed=embed
-    )
-
-
-# ============================================================
-# FINALIZAR JORNADA ADMINISTRATIVAMENTE
-# ============================================================
-
-@bot.tree.command(
-    name="ponto-finalizar",
-    description="Finaliza a jornada de um membro."
-)
-@app_commands.describe(
-    membro="Membro cuja jornada será finalizada."
-)
-async def aura_vip_finish_command(
-    interaction,
-    membro: discord.Member
-):
-
-    if not aura_vip_manager(interaction):
-
-        await aura_vip_respond(
-            interaction,
-            content="Você não possui permissão.",
-            ephemeral=True
-        )
-
-        return
-
-    result = await aura_vip_finish_work(
-        interaction.guild.id,
-        membro.id
-    )
-
-    if not result:
-
-        await aura_vip_respond(
-            interaction,
-            embed=aura_vip_embed(
-                "Nenhuma jornada ativa",
-                f"{membro.mention} não possui uma jornada ativa.",
-                0xF59E0B,
-                interaction
-            )
-        )
-
-        return
-
-    await aura_vip_respond(
-        interaction,
-        embed=aura_vip_embed(
-            "JORNADA FINALIZADA",
-            (
-                f"👤 **Membro:** {membro.mention}\n\n"
-                f"💼 **Tempo trabalhado:** "
-                f"`{aura_vip_human_seconds(result['worked_seconds'])}`\n"
-                f"⭐ **Pontos:** `+{result['points']}`"
-            ),
-            0x22C55E,
-            interaction
-        )
-    )
-
-
-# ============================================================
-# EVENTOS VIP SEGUROS
-# ============================================================
-
-async def aura_vip_record_message(message):
-
-    if not message.guild:
-        return
-
-    try:
-        aura_vip_increment(
-            message.guild.id,
-            "messages"
-        )
-    except Exception:
-        pass
-
-
-# ============================================================
-# RESTORE DE VIEWS
-# ============================================================
-
-async def aura_vip_register_persistent_views():
-
-    try:
-
         bot.add_view(
-            AuraVIPTicketPanelView()
+            SistemaVerificationView()
         )
+    except Exception:
+        pass
 
-        bot.add_view(
-            AuraVIPTicketControls()
-        )
-
-        bot.add_view(
-            AuraVIPPontoView()
-        )
-
-        bot.add_view(
-            AuraVIPPontoActiveView()
-        )
-
-        bot.add_view(
-            AuraVIPPontoPausedView()
-        )
-
+    try:
+        # Garante que o banco adicional seja salvo.
+        save_data()
     except Exception:
         pass
 
 
-# ============================================================
-# AURA VIP SYSTEM END
-# ============================================================
+# <<< SISTEMAS COMPLETOS V1 <<<
+
+async def setup_hook():
+    await _sistemas_setup()
+    bot.add_view(ClockView())
+    bot.add_view(VerificationView())
+    for guild_record in data['timeclock'].values():
+        for user_id in guild_record.get('active', {}):
+            bot.add_view(ClockControlView(int(user_id)))
+    for poll_id, poll in data['polls'].items():
+        if poll.get('open'):
+            bot.add_view(PollView(poll_id))
+
+async def synchronize_commands():
+    """Sincroniza todos os comandos globalmente."""
+    try:
+        synced = await bot.tree.sync()
+        await initialize_ticket_v3()
+        print('[TICKET V3] Inicializado com sucesso.')
+        print(f'[SLASH] {len(synced)} comandos globais sincronizados.')
+    except discord.HTTPException as error:
+        print(f'[SLASH] Erro ao sincronizar comandos globais: {type(error).__name__}: {error}')
+bot.setup_hook = setup_hook
+token = os.getenv('DISCORD_TOKEN')
+if not token:
+    raise RuntimeError('Defina a variável de ambiente DISCORD_TOKEN antes de iniciar o bot.')
+bot.run(token)
